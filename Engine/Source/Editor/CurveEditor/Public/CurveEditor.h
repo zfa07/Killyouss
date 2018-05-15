@@ -8,7 +8,7 @@
 #include "Math/Vector2D.h"
 #include "Misc/Attribute.h"
 #include "Math/Range.h"
-#include "FrameRate.h"
+#include "Misc/FrameRate.h"
 
 #include "CurveEditorTypes.h"
 #include "CurveDataAbstraction.h"
@@ -33,6 +33,8 @@ public:
 	 * Container holding the current key/tangent selection
 	 */
 	FCurveEditorSelection Selection;
+
+	
 
 public:
 
@@ -247,17 +249,17 @@ public:
 	/**
 	 * Called by SCurveEditorPanel to determine where to draw grid lines along the X-axis
 	 */
-	virtual void GetGridLinesX(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines) const
+	virtual void GetGridLinesX(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines, TArray<FText>& MajorGridLabels) const
 	{
-		ConstructInputGridLines(MajorGridLines, MinorGridLines);
+		ConstructXGridLines(MajorGridLines, MinorGridLines, MajorGridLabels);
 	}
 
 	/**
 	 * Called by SCurveEditorPanel to determine where to draw grid lines along the Y-axis
 	 */
-	virtual void GetGridLinesY(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines) const
+	virtual void GetGridLinesY(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines, TArray<FText>& MajorGridLabels) const
 	{
-		ConstructOutputGridLines(MajorGridLines, MinorGridLines, 4);
+		ConstructYGridLines(MajorGridLines, MinorGridLines, MajorGridLabels, 4);
 	}
 
 	/**
@@ -270,17 +272,29 @@ public:
 	* Get A Vector for the given slope, usually a tangent, and length. Used to draw the tangent.
 	*/
 	static FVector2D GetVectorFromSlopeAndLength(float Slope, float Length);
+
+public:
+	/**
+	* Given the position of a tangent in screen space get it's position in normal time/value space.
+	*/
+	FVector2D GetTangentPositionInScreenSpace(const FVector2D &StartPos, float Tangent, float Weight) const;
+
+	/**
+	* Given point and tangent position in screen space, get the tangent and it's weight value in normal time/value space.
+	*/
+	void GetTangentAndWeightFromScreenPosition(const FVector2D &StartPos, const  FVector2D &TangentPos, float &Tangent, float &Weight) const;
+
 protected:
 
 	/**
 	 * Construct grid lines along the current display frame rate or time-base
 	 */
-	void ConstructInputGridLines(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines) const;
+	void ConstructXGridLines(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines, TArray<FText>& MajorGridLabels) const;
 
 	/**
 	 * Construct grid lines for the current visible value range
 	 */
-	void ConstructOutputGridLines(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines, uint8 MinorDivisions) const;
+	void ConstructYGridLines(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines, TArray<FText>& MajorGridLabels, uint8 MinorDivisions) const;
 
 	/**
 	 * Internal zoom to fit implementation

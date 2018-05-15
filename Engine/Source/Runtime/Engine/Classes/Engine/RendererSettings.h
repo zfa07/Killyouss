@@ -117,6 +117,11 @@ namespace EAlphaChannelMode
 	};
 }
 
+namespace EAlphaChannelMode
+{
+	ENGINE_API EAlphaChannelMode::Type FromInt(int32 InAlphaChannelMode);
+}
+
 /** used by FPostProcessSettings AutoExposure*/
 UENUM()
 namespace EAutoExposureMethodUI
@@ -133,7 +138,7 @@ namespace EAutoExposureMethodUI
 	};
 }
 
-/** used by DefaultBackBufferPixelFormat*/
+/** used by GetDefaultBackBufferPixelFormat*/
 UENUM()
 namespace EDefaultBackBufferPixelFormat
 {
@@ -150,7 +155,9 @@ namespace EDefaultBackBufferPixelFormat
 
 namespace EDefaultBackBufferPixelFormat
 {
-	ENGINE_API EPixelFormat Convert2PixelFormat(int32 InDefaultBackBufferPixelFormat);
+	ENGINE_API EPixelFormat Convert2PixelFormat(EDefaultBackBufferPixelFormat::Type InDefaultBackBufferPixelFormat);
+	ENGINE_API int32 NumberOfBitForAlpha(EDefaultBackBufferPixelFormat::Type InDefaultBackBufferPixelFormat);
+	ENGINE_API EDefaultBackBufferPixelFormat::Type FromInt(int32 InDefaultBackBufferPixelFormat);
 }
 
 /**
@@ -507,6 +514,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Enable monoscopic far field rendering (only available for mobile).",
 		ConfigRestartRequired = true))
 		uint32 bMonoscopicFarField : 1;
+
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		ConsoleVariable = "vr.ODSCapture", DisplayName = "Omni-directional Stereo Capture",
+		ToolTip = "Enable Omni-directional Stereo Capture.",
+		ConfigRestartRequired = true))
+		uint32 bODSCapture : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = VR, meta = (
 		ConsoleVariable = "vr.DebugCanvasInLayer", DisplayName = "Debug Canvas in Layer",

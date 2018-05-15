@@ -7,7 +7,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/Input/NumericTypeInterface.h"
 #include "ITimeSlider.h"
-#include "QualifiedFrameTime.h"
+#include "Misc/QualifiedFrameTime.h"
 
 class STimeRange : public ITimeSlider
 {
@@ -51,14 +51,11 @@ protected:
 	void OnPlayStartTimeChanged(double NewValue);
 	void OnPlayEndTimeChanged(double NewValue);
 
-	FText PlayStartTimeTooltip() const;
-	FText PlayEndTimeTooltip() const;
-
 protected:
 
 	double ViewStartTime() const;
 	double ViewEndTime() const;
-
+	
 	TOptional<double> MaxViewStartTime() const;
 	TOptional<double> MinViewEndTime() const;
 
@@ -67,9 +64,6 @@ protected:
 
 	void OnViewStartTimeChanged(double NewValue);
 	void OnViewEndTimeChanged(double NewValue);
-
-	FText ViewStartTimeTooltip() const;
-	FText ViewEndTimeTooltip() const;
 
 protected:
 

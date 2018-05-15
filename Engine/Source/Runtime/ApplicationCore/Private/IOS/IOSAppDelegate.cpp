@@ -550,7 +550,9 @@ bool GIsSuspended = 0;
 	{
 		// Don't deadlock here because a msg box may appear super early blocking the game thread and then the app may go into the background
 		double	startTime = FPlatformTime::Seconds();
-		while(!self.bHasSuspended && (FPlatformTime::Seconds() - startTime) < cMaxThreadWaitTime)
+
+		// don't wait for FDefaultGameMoviePlayer::WaitForMovieToFinish(), crash with 0x8badf00d if “Wait for Movies to Complete” is checked
+		while(!self.bHasSuspended && !FAppEntry::IsStartupMoviePlaying() &&  (FPlatformTime::Seconds() - startTime) < cMaxThreadWaitTime)
 		{
             FIOSPlatformRHIFramePacer::Suspend();
 			FPlatformProcess::Sleep(0.05f);
@@ -724,7 +726,9 @@ bool GIsSuspended = 0;
 	
 #if !PLATFORM_TVOS
 	// Save launch local notification so the app can check for it when it is ready
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UILocalNotification *notification = [launchOptions objectForKey:UIApplicationLaunchOptionsLocalNotificationKey];
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	if ( notification != nullptr )
 	{
 		NSDictionary*	userInfo = [notification userInfo];
@@ -977,6 +981,7 @@ FCriticalSection RenderSuspend;
 #if !PLATFORM_TVOS && NOTIFICATIONS_ENABLED
 
 #ifdef __IPHONE_8_0
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 - (void)application:(UIApplication *)application didRegisterUserNotificationSettings:(UIUserNotificationSettings *)notificationSettings
 {
 	[application registerForRemoteNotifications];
@@ -986,6 +991,7 @@ FCriticalSection RenderSuspend;
 		FCoreDelegates::ApplicationRegisteredForUserNotificationsDelegate.Broadcast(types);
     }, TStatId(), NULL, ENamedThreads::GameThread);
 }
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #endif
 
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken
@@ -1068,7 +1074,7 @@ FCriticalSection RenderSuspend;
 #endif
 
 #if !PLATFORM_TVOS
-
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 - (void)application:(UIApplication *)application didReceiveLocalNotification:(UILocalNotification *)notification
 {
 	NSString*	activationEvent = (NSString*)[notification.userInfo objectForKey: @"ActivationEvent"];
@@ -1102,7 +1108,7 @@ FCriticalSection RenderSuspend;
 		NSLog(@"Warning: Missing local notification activation event");
 	}
 }
-
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #endif
 
 /**

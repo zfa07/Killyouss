@@ -1035,7 +1035,7 @@ FViewport::FViewport(FViewportClient* InViewportClient):
 	if (GIsEditor) 
 	{
 		GConfig->GetInt( TEXT("UnrealEd.HitProxy"), TEXT("HitProxySize"), (int32&)HitProxySize, GEditorIni );
-		FMath::Clamp( HitProxySize, (uint32)1, (uint32)MAX_HITPROXYSIZE );
+		HitProxySize = FMath::Clamp( HitProxySize, (uint32)1, (uint32)MAX_HITPROXYSIZE );
 	}
 
 	// Cache the viewport client's hit proxy storage requirement.
@@ -1144,7 +1144,7 @@ void FViewport::HighResScreenshot()
 
 	while (FrameDelay)
 	{
-		DummyViewport->EnqueueBeginRenderFrame();
+		DummyViewport->EnqueueBeginRenderFrame(false);
 
 		FCanvas Canvas(DummyViewport, NULL, ViewportClient->GetWorld(), ViewportClient->GetWorld()->FeatureLevel);
 		{
@@ -1320,7 +1320,7 @@ void UPostProcessComponent::Serialize(FArchive& Ar)
 /**
 *	Starts a new rendering frame. Called from the game thread thread.
 */
-void FViewport::EnqueueBeginRenderFrame()
+void FViewport::EnqueueBeginRenderFrame(const bool bShouldPresent)
 {
 	AdvanceFrameRenderPrerequisite();
 	ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
@@ -1392,7 +1392,7 @@ void FViewport::Draw( bool bShouldPresent /*= true */)
 				{
 					bLockToVsync |= (Player && Player->PlayerController && Player->PlayerController->bCinematicMode);
 				}
-	 			EnqueueBeginRenderFrame();
+	 			EnqueueBeginRenderFrame(bShouldPresent);
 
 				// Calculate gamethread time (excluding idle time)
 				{
@@ -1521,7 +1521,7 @@ const TArray<FColor>& FViewport::GetRawHitProxyData(FIntRect InRect)
 	// If the hit proxy map isn't up to date, render the viewport client's hit proxies to it.
 	else if (!bHitProxiesCached)
 	{
-		EnqueueBeginRenderFrame();
+		EnqueueBeginRenderFrame(false);
 
 		ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
 			BeginDrawingCommandHitProxy,

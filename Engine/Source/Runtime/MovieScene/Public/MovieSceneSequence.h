@@ -13,6 +13,7 @@
 class ITargetPlatform;
 class UMovieScene;
 struct FMovieScenePossessable;
+struct FMovieSceneObjectCache;
 
 /**
  * Abstract base class for movie scene animations (C++ version).
@@ -81,6 +82,14 @@ public:
 	MOVIESCENE_API FGuid FindPossessableObjectId(UObject& Object, UObject* Context) const;
 
 	/**
+	 * Called to validate the specified object cache by removing anything that should be deemed out of date
+	 * 
+	 * @param InObjectCache 		The object cache container that contains all the objects currently animated by this sequence
+	 * @param OutInvalidIDs 		(Out) Array to populate with any object bindings that should be invalidated
+	 */
+	virtual void GatherExpiredObjects(const FMovieSceneObjectCache& InObjectCache, TArray<FGuid>& OutInvalidIDs) const {}
+
+	/**
 	 * Get the movie scene that controls this animation.
 	 *
 	 * The returned movie scene represents the root movie scene.
@@ -137,6 +146,16 @@ public:
 	 * @return true if this object can be animated.
 	 */
 	virtual bool CanAnimateObject(UObject& InObject) const { return true; }
+
+	/**
+	 * Called to add a new possessable for the specified object
+	 */
+	virtual FGuid CreatePossessable(UObject* ObjectToPossess) { return FGuid(); }
+
+	/**
+	 * Called to add a new spawnable for the specified object
+	 */
+	virtual FGuid CreateSpawnable(UObject* ObjectToSpawn) { return FGuid(); }
 
 public:
 

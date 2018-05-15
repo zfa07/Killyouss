@@ -183,7 +183,7 @@ bool FWmfMediaSession::SetTopology(const TComPtr<IMFTopology>& InTopology, FTime
 
 			if (FAILED(Result))
 			{
-				UE_LOG(LogWmfMedia, Verbose, TEXT("Session %p: Failed to set topology: %s"), this, *WmfMedia::ResultToString(Result));
+				UE_LOG(LogWmfMedia, Verbose, TEXT("Session %p: Failed to set partial topology %p: %s"), this, InTopology.Get(), *WmfMedia::ResultToString(Result));
 				
 				SessionState = EMediaState::Error;
 				DeferredEvents.Enqueue(EMediaEvent::MediaOpenFailed);
@@ -869,6 +869,14 @@ bool FWmfMediaSession::CommitTime(FTimespan Time)
 		UE_LOG(LogWmfMedia, Verbose, TEXT("Session %p: Starting from <current>, because media can't seek"), this);
 		Time = WmfMediaSession::RequestedTimeCurrent;
 	}
+	else if (Time == GetTime())
+	{
+		// Fix for audio desync and video fast-forwarding behavior
+		// There long delay (500ms+) until samples start arriving unless we specifically use RequestedTimeCurrent
+		// After delay occurs samples begin arriving at accelerated speed until caught up to playback time leading to visual and audio problems
+		UE_LOG(LogWmfMedia, Verbose, TEXT("Session %p: Starting from <current>, because media already queued up to correct time"), this);
+		Time = WmfMediaSession::RequestedTimeCurrent;
+	}
 
 	if (Time == WmfMediaSession::RequestedTimeCurrent)
 	{
@@ -947,7 +955,7 @@ bool FWmfMediaSession::CommitTopology(IMFTopology* Topology)
 
 		if (FAILED(Result))
 		{
-			UE_LOG(LogWmfMedia, Verbose, TEXT("Session %p: Failed to set topology: %s"), this, *WmfMedia::ResultToString(Result));
+			UE_LOG(LogWmfMedia, Verbose, TEXT("Session %p: Failed to set topology %p: %s"), Topology, this, *WmfMedia::ResultToString(Result));
 			return false;
 		}
 

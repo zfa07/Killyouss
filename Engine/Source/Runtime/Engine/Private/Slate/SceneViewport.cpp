@@ -1035,9 +1035,9 @@ FReply FSceneViewport::OnFocusReceived(const FFocusEvent& InFocusEvent)
 		{
 			FSlateApplication& SlateApp = FSlateApplication::Get();
 
-			const bool bPermanentCapture =
-				( ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently ) ||
-				( ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown );
+			const bool bPermanentCapture = !GIsEditor && 
+				(( ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently ) ||
+				( ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown ));
 
 			if ( SlateApp.IsActive() && !ViewportClient->IgnoreInput() && bPermanentCapture )
 			{
@@ -1112,8 +1112,8 @@ FReply FSceneViewport::OnViewportActivated(const FWindowActivateEvent& InActivat
 		
 		// Determine if we're in permanent capture mode.  This cannot be cached as part of bShouldCaptureMouseOnActivate because it could change between window activate and deactivate
 		const bool bPermanentCapture =
-			(ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently) ||
-			(ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
+			!GIsEditor && ((ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently) ||
+			(ViewportClient->CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown));
 
 		// If we are activating and had Mouse Capture on deactivate then we should get focus again
 		// It's important to note in the case of:
@@ -1144,7 +1144,7 @@ void FSceneViewport::OnViewportDeactivated(const FWindowActivateEvent& InActivat
 	// This fixes the case where the application is deactivated, then the user click on the windows header
 	// this activates the window but we do not capture the mouse, then the User Alt-Tabs to the application.
 	// We properly acquire capture because we maintained the "true" through the activation where nothing was focuses
-	bShouldCaptureMouseOnActivate = bShouldCaptureMouseOnActivate || HasMouseCapture();
+	bShouldCaptureMouseOnActivate = !GIsEditor  && (bShouldCaptureMouseOnActivate || HasMouseCapture());
 
 	KeyStateMap.Empty();
 	if (ViewportClient != nullptr)
@@ -1485,7 +1485,7 @@ void FSceneViewport::UpdateViewportRHI(bool bDestroyed, uint32 NewSizeX, uint32 
 	}
 }
 
-void FSceneViewport::EnqueueBeginRenderFrame()
+void FSceneViewport::EnqueueBeginRenderFrame(const bool bShouldPresent)
 {
 	check( IsInGameThread() );
 	const bool bStereoRenderingAvailable = GEngine->StereoRenderingDevice.IsValid() && IsStereoRenderingAllowed();
@@ -1551,9 +1551,9 @@ void FSceneViewport::EnqueueBeginRenderFrame()
 		Viewport->SetRenderTargetTextureRenderThread(RT);			
 	});		
 
-	FViewport::EnqueueBeginRenderFrame();
+	FViewport::EnqueueBeginRenderFrame(bShouldPresent);
 
-	if (StereoRenderTargetManager != nullptr)
+	if (StereoRenderTargetManager != nullptr && bShouldPresent)
 	{
 		StereoRenderTargetManager->UpdateViewport(UseSeparateRenderTarget(), *this, ViewportWidget.Pin().Get());
 	}
@@ -1787,7 +1787,7 @@ void FSceneViewport::InitDynamicRHI()
 		for (int32 i = 0; i < NumBufferedFrames; ++i)
 		{
 			// try to allocate texture via StereoRenderingDevice; if not successful, use the default way
-			if (StereoRenderTargetManager == nullptr || !StereoRenderTargetManager->AllocateRenderTargetTexture(i, TexSizeX, TexSizeY, PF_B8G8R8A8, 1, TexCreate_None, TexCreate_RenderTargetable, BufferedRTRHI, BufferedSRVRHI))
+			if (StereoRenderTargetManager == nullptr || !StereoRenderTargetManager->AllocateRenderTargetTexture(i, TexSizeX, TexSizeY, SceneTargetFormat, 1, TexCreate_None, TexCreate_RenderTargetable, BufferedRTRHI, BufferedSRVRHI))
 			{
 				RHICreateTargetableShaderResource2D(TexSizeX, TexSizeY, SceneTargetFormat, 1, TexCreate_None, TexCreate_RenderTargetable, false, CreateInfo, BufferedRTRHI, BufferedSRVRHI);
 			}

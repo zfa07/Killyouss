@@ -2200,6 +2200,13 @@ void FLevelEditorViewportClient::UpdateViewForLockedActor(float DeltaTime)
 					}
 				}
 			}
+
+			const float DistanceToCurrentLookAt = FVector::Dist( GetViewLocation() , GetLookAtLocation() );
+
+			const FQuat CameraOrientation = FQuat::MakeFromEuler( GetViewRotation().Euler() );
+			FVector Direction = CameraOrientation.RotateVector( FVector(1,0,0) );
+
+			SetLookAtLocation( GetViewLocation() + Direction * DistanceToCurrentLookAt );
 		}
 	}
 }
@@ -3413,11 +3420,9 @@ void FLevelEditorViewportClient::ApplyDeltaToActors(const FVector& InDrag,
 				TInlineComponentArray<USceneComponent*> ComponentsToMove;
 				for (FSelectedEditableComponentIterator EditableComponentIt(GEditor->GetSelectedEditableComponentIterator()); EditableComponentIt; ++EditableComponentIt)
 				{
-					USceneComponent* SceneComponent = CastChecked<USceneComponent>(*EditableComponentIt);
-					if (SceneComponent)
+					USceneComponent* SelectedComponent = Cast<USceneComponent>(*EditableComponentIt);
+					if (SelectedComponent)
 					{
-						USceneComponent* SelectedComponent = Cast<USceneComponent>(*EditableComponentIt);
-
 						// Check to see if any parent is selected
 						bool bParentAlsoSelected = false;
 						USceneComponent* Parent = SelectedComponent->GetAttachParent();

@@ -235,27 +235,13 @@ void FCurveEditor::ZoomToFitCurves(TArrayView<const FCurveModelID> CurveModelIDs
 		{
 			if (const FCurveModel* Curve = FindCurve(CurveModelID))
 			{
-				KeyHandlesScratch.Reset();
-				Curve->GetKeys(*this,
-					TNumericLimits<double>::Lowest(),
-					TNumericLimits<double>::Max(),
-					TNumericLimits<double>::Lowest(),
-					TNumericLimits<double>::Max(),
-					KeyHandlesScratch);
-
-				if (KeyHandlesScratch.Num())
-				{
-					KeyPositionsScratch.SetNum(KeyHandlesScratch.Num());
-					Curve->GetKeyPositions(KeyHandlesScratch, KeyPositionsScratch);
-
-					for (FKeyPosition Key : KeyPositionsScratch)
-					{
-						InputMin  = FMath::Min(InputMin, Key.InputValue);
-						InputMax  = FMath::Max(InputMax, Key.InputValue);
-						OutputMin = FMath::Min(OutputMin, Key.OutputValue);
-						OutputMax = FMath::Max(OutputMax, Key.OutputValue);
-					}
-				}
+				double LocalMin, LocalMax;
+				Curve->GetTimeRange(LocalMin, LocalMax);
+				InputMin = FMath::Min(InputMin, LocalMin);
+				InputMax = FMath::Max(InputMax, LocalMax);
+				Curve->GetValueRange(LocalMin, LocalMax);
+				OutputMin = FMath::Min(OutputMin, LocalMin);
+				OutputMax = FMath::Max(OutputMax, LocalMax);
 			}
 		}
 
@@ -307,14 +293,14 @@ void FCurveEditor::ZoomToFitSelection(EAxisList::Type Axes)
 void FCurveEditor::ZoomToFitInternal(EAxisList::Type Axes, double InputMin, double InputMax, double OutputMin, double OutputMax)
 {
 	FCurveEditorSnapMetrics SnapMetrics = GetSnapMetrics();
-	double MinInputZoom = SnapMetrics.bSnapInputValues ? SnapMetrics.InputSnapRate.AsInterval() : 0.001;
-	double MinOutputZoom = SnapMetrics.bSnapOutputValues ? SnapMetrics.OutputSnapInterval : 0.001;
+	double MinInputZoom = SnapMetrics.bSnapInputValues ? SnapMetrics.InputSnapRate.AsInterval() : 0.00001;
+	double MinOutputZoom = SnapMetrics.bSnapOutputValues ? SnapMetrics.OutputSnapInterval : 0.00001;
 
 	InputMax = FMath::Max(InputMin + MinInputZoom, InputMax);
 	OutputMax = FMath::Max(OutputMin + MinOutputZoom, OutputMax);
 
 	double InputPadding  = (InputMax - InputMin) * 0.1;
-	double OutputPadding = (OutputMax - OutputMin) * 0.1;
+	double OutputPadding = (OutputMax - OutputMin) * 0.05;
 
 	InputMin -= InputPadding;
 	InputMax += InputPadding;
@@ -374,6 +360,30 @@ FVector2D FCurveEditor::GetVectorFromSlopeAndLength(float Slope, float Length)
 	float x = Length / FMath::Sqrt(Slope*Slope + 1.f);
 	float y = Slope * x;
 	return FVector2D(x, y);
+}
+
+FVector2D  FCurveEditor::GetTangentPositionInScreenSpace(const FVector2D &StartPos, float Tangent, float Weight) const
+{
+	FCurveEditorScreenSpace ScreenSpace = GetScreenSpace();
+	const float Angle = FMath::Atan(-Tangent);
+	float X, Y;
+	FMath::SinCos(&Y, &X, Angle);
+	X *= Weight;
+	Y *= Weight;
+
+	X *= ScreenSpace.PixelsPerInput();
+	Y *= ScreenSpace.PixelsPerOutput();
+	return FVector2D(StartPos.X + X, StartPos.Y +Y);
+}
+
+void FCurveEditor::GetTangentAndWeightFromScreenPosition(const FVector2D &StartPos, const  FVector2D &TangentPos, float &Tangent, float &Weight) const
+{
+	FCurveEditorScreenSpace ScreenSpace = GetScreenSpace();
+	float X = ScreenSpace.ScreenToSeconds(TangentPos.X) - ScreenSpace.ScreenToSeconds(StartPos.X);
+	float Y = ScreenSpace.ScreenToValue(TangentPos.Y) - ScreenSpace.ScreenToValue(StartPos.Y);
+
+	Tangent = Y / X;
+	Weight = FMath::Sqrt(X*X + Y * Y);
 }
 
 void FCurveEditor::GetCurveDrawParams(TArray<FCurveDrawParams>& OutDrawParams) const
@@ -456,7 +466,18 @@ void FCurveEditor::GetCurveDrawParams(TArray<FCurveDrawParams>& OutDrawParams) c
 
 					FCurvePointInfo ArriveTangentPoint(KeyHandle);
 					ArriveTangentPoint.Type = ECurvePointType::ArriveTangent;
-					ArriveTangentPoint.ScreenPosition = Key.ScreenPosition + FCurveEditor::GetVectorFromSlopeAndLength(ArriveTangent * -DisplayRatio, -60.f);
+
+
+					if (Attributes.HasTangentWeightMode() && Attributes.HasArriveTangentWeight() &&
+						(Attributes.GetTangentWeightMode() == RCTWM_WeightedBoth || Attributes.GetTangentWeightMode() == RCTWM_WeightedArrive))
+					{
+						ArriveTangentPoint.ScreenPosition = GetTangentPositionInScreenSpace(Key.ScreenPosition, ArriveTangent, -Attributes.GetArriveTangentWeight());
+					}
+					else
+					{
+						float PixelLength = 60.0f; 
+						ArriveTangentPoint.ScreenPosition = Key.ScreenPosition + FCurveEditor::GetVectorFromSlopeAndLength(ArriveTangent * -DisplayRatio, -PixelLength);
+					}
 					ArriveTangentPoint.LineDelta = Key.ScreenPosition - ArriveTangentPoint.ScreenPosition;
 					ArriveTangentPoint.LayerBias = 1;
 
@@ -469,7 +490,19 @@ void FCurveEditor::GetCurveDrawParams(TArray<FCurveDrawParams>& OutDrawParams) c
 
 					FCurvePointInfo LeaveTangentPoint(KeyHandle);
 					LeaveTangentPoint.Type = ECurvePointType::LeaveTangent;
-					LeaveTangentPoint.ScreenPosition = Key.ScreenPosition + FCurveEditor::GetVectorFromSlopeAndLength(LeaveTangent * -DisplayRatio, 60.f);
+
+					if (Attributes.HasTangentWeightMode() && Attributes.HasLeaveTangentWeight() &&
+						(Attributes.GetTangentWeightMode() == RCTWM_WeightedBoth || Attributes.GetTangentWeightMode() == RCTWM_WeightedLeave))
+					{
+						LeaveTangentPoint.ScreenPosition = GetTangentPositionInScreenSpace(Key.ScreenPosition, LeaveTangent, Attributes.GetLeaveTangentWeight());
+					}
+					else
+					{
+						float PixelLength = 60.0f; 
+						LeaveTangentPoint.ScreenPosition = Key.ScreenPosition + FCurveEditor::GetVectorFromSlopeAndLength(LeaveTangent * -DisplayRatio, PixelLength);
+
+					}
+
 					LeaveTangentPoint.LineDelta = Key.ScreenPosition - LeaveTangentPoint.ScreenPosition;
 					LeaveTangentPoint.LayerBias = 1;
 
@@ -482,7 +515,7 @@ void FCurveEditor::GetCurveDrawParams(TArray<FCurveDrawParams>& OutDrawParams) c
 	}
 }
 
-void FCurveEditor::ConstructInputGridLines(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines) const
+void FCurveEditor::ConstructXGridLines(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines, TArray<FText>& MajorGridLabels) const
 {
 	FCurveEditorScreenSpace ScreenSpace = GetScreenSpace();
 
@@ -496,6 +529,7 @@ void FCurveEditor::ConstructInputGridLines(TArray<float>& MajorGridLines, TArray
 		for (double CurrentMajorLine = FirstMajorLine; CurrentMajorLine < LastMajorLine; CurrentMajorLine += MajorGridStep)
 		{
 			MajorGridLines.Add( ScreenSpace.SecondsToScreen(CurrentMajorLine) );
+			MajorGridLabels.Add( FText::Format(LOCTEXT("GridXLabelFormat", "{0}s"), FText::AsNumber(CurrentMajorLine)) );
 
 			for (int32 Step = 1; Step < MinorDivisions; ++Step)
 			{
@@ -505,7 +539,7 @@ void FCurveEditor::ConstructInputGridLines(TArray<float>& MajorGridLines, TArray
 	}
 }
 
-void FCurveEditor::ConstructOutputGridLines(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines, uint8 MinorDivisions) const
+void FCurveEditor::ConstructYGridLines(TArray<float>& MajorGridLines, TArray<float>& MinorGridLines, TArray<FText>&MajorGridLabels, uint8 MinorDivisions) const
 {
 	FCurveEditorSnapMetrics SnapMetrics = GetSnapMetrics();
 	FCurveEditorScreenSpace ScreenSpace = GetScreenSpace();
@@ -527,10 +561,11 @@ void FCurveEditor::ConstructOutputGridLines(TArray<float>& MajorGridLines, TArra
 	for (double CurrentMajorLine = FirstMajorLine; CurrentMajorLine < LastMajorLine; CurrentMajorLine += MajorGridStep)
 	{
 		MajorGridLines.Add( ScreenSpace.ValueToScreen(CurrentMajorLine) );
+		MajorGridLabels.Add(FText::Format(LOCTEXT("GridYLabelFormat", "{0}"), FText::AsNumber(CurrentMajorLine)));
 
 		for (int32 Step = 1; Step < MinorDivisions; ++Step)
 		{
-			MinorGridLines.Add( ScreenSpace.SecondsToScreen(CurrentMajorLine + Step*MajorGridStep/MinorDivisions) );
+			MinorGridLines.Add( ScreenSpace.ValueToScreen(CurrentMajorLine + Step*MajorGridStep/MinorDivisions) );
 		}
 	}
 }

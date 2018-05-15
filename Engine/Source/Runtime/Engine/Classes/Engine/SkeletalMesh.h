@@ -505,6 +505,10 @@ public:
 	UPROPERTY(EditAnywhere, Category=Mesh)
 	uint32 bUseFullPrecisionUVs:1;
 
+	/** If true, tangents will be stored at 16 bit vs 8 bit precision */
+	UPROPERTY(EditAnywhere, Category = Mesh)
+	uint32 bUseHighPrecisionTangentBasis : 1;
+
 	/** true if this mesh has ever been simplified with Simplygon. */
 	UPROPERTY()
 	uint32 bHasBeenSimplified:1;
@@ -776,6 +780,8 @@ public:
 
 	virtual void PostEditUndo() override;
 	virtual void GetAssetRegistryTagMetadata(TMap<FName, FAssetRegistryTagMetadata>& OutMetadata) const override;
+
+	void UpdateGenerateUpToData();
 #endif // WITH_EDITOR
 	virtual void BeginDestroy() override;
 	virtual bool IsReadyForFinishDestroy() override;

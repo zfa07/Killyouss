@@ -85,9 +85,9 @@ namespace UnrealBuildTool
 		}
 
 		/// <summary>
-		/// Finds a list of folder names to exclude when building for this platform
+		/// Finds a list of folder names to include when building for this platform
 		/// </summary>
-		public FileSystemName[] GetIncludedFolderNames()
+		virtual public FileSystemName[] GetIncludedFolderNames()
 		{
 			if(CachedIncludedFolderNames == null)
 			{
@@ -443,6 +443,7 @@ namespace UnrealBuildTool
 				case CppPlatform.TVOS:			return UnrealTargetPlatform.TVOS;
 				case CppPlatform.Switch: 		return UnrealTargetPlatform.Switch;
 				case CppPlatform.Quail:			return UnrealTargetPlatform.Quail;
+				case CppPlatform.Lumin:			return UnrealTargetPlatform.Lumin;
 			}
 			throw new BuildException("CPPTargetPlatformToUnrealTargetPlatform: Unknown CPPTargetPlatform {0}", InCPPPlatform.ToString());
 		}
@@ -578,14 +579,14 @@ namespace UnrealBuildTool
 		}
 
 		/// <summary>
-		/// Get the extension to use for debug info for the given binary type
+		/// Get the extensions to use for debug info for the given binary type
 		/// </summary>
 		/// <param name="InTarget">Options for the target being built</param>
 		/// <param name="InBinaryType"> The binary type being built</param>
-		/// <returns>string    The debug info extension (i.e. 'pdb')</returns>
-		public virtual string GetDebugInfoExtension(ReadOnlyTargetRules InTarget, UEBuildBinaryType InBinaryType)
+		/// <returns>string[]    The debug info extensions (i.e. 'pdb')</returns>
+		public virtual string[] GetDebugInfoExtensions(ReadOnlyTargetRules InTarget, UEBuildBinaryType InBinaryType)
 		{
-			throw new BuildException("GetDebugInfoExtension for {0} not handled in {1}", InBinaryType.ToString(), this.ToString());
+			throw new BuildException("GetDebugInfoExtensions for {0} not handled in {1}", InBinaryType.ToString(), this.ToString());
 		}
 
 		/// <summary>
@@ -882,6 +883,16 @@ namespace UnrealBuildTool
 		/// <param name="Target">The target being built</param>
 		/// <returns>New toolchain instance.</returns>
 		public abstract UEToolChain CreateToolChain(CppPlatform CppPlatform, ReadOnlyTargetRules Target);
+
+		/// <summary>
+		/// Creates a temp toolchain instance for the given project - will not be used to compile with, and is only needed on some platforms
+		/// </summary>
+		/// <param name="ProjectFile">The project to make the toolchain for</param>
+		/// <returns>New toolchain instance.</returns>
+		public virtual UEToolChain CreateTempToolChainForProject(FileReference ProjectFile)
+		{
+			return null;
+		}
 
 		/// <summary>
 		/// Deploys the given target

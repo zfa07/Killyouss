@@ -915,7 +915,6 @@ FLinkerLoad::ELinkerStatus FLinkerLoad::CreateLoader(
 		}
 		else
 		{
-			StructuredArchiveFormatter = nullptr;
 #if WITH_TEXT_ARCHIVE_SUPPORT
 			if (Filename.EndsWith(FPackageName::GetTextAssetPackageExtension()) || Filename.EndsWith(FPackageName::GetTextMapPackageExtension()))
 			{
@@ -993,13 +992,17 @@ FLinkerLoad::ELinkerStatus FLinkerLoad::CreateLoader(
 				{
 					bLoaderIsFArchiveAsync2 = true;
 				}
-
-				StructuredArchiveFormatter = new FBinaryArchiveFormatter(*this);
 			}
-
-			StructuredArchive = new FStructuredArchive(*StructuredArchiveFormatter);
-			StructuredArchiveRootRecord.Emplace(StructuredArchive->Open().EnterRecord());
 		} 
+
+		// Create structured archive wrapper
+		if (StructuredArchiveFormatter == nullptr)
+		{
+			StructuredArchiveFormatter = new FBinaryArchiveFormatter(*this);
+		}
+
+		StructuredArchive = new FStructuredArchive(*StructuredArchiveFormatter);
+		StructuredArchiveRootRecord.Emplace(StructuredArchive->Open().EnterRecord());
 
 		check(bDynamicClassLinker || Loader);
 		check(bDynamicClassLinker || !Loader->IsError());
@@ -1102,14 +1105,13 @@ FLinkerLoad::ELinkerStatus FLinkerLoad::SerializePackageFileSummary()
 			UE_LOG(LogLinker, Warning, TEXT("The file %s was saved by a previous version which is not backwards compatible with this one. Min Required Version: %i  Package Version: %i"), *Filename, (int32)VER_UE4_OLDEST_LOADABLE_PACKAGE, Summary.GetFileVersionUE4() );
 			return LINKER_Failed;
 		}
-
 		// Don't load packages that are only compatible with an engine version newer than the current one.
-		if( !FEngineVersion::Current().IsCompatibleWith(Summary.CompatibleWithEngineVersion) )
+		if (!FEngineVersion::Current().IsCompatibleWith(Summary.CompatibleWithEngineVersion))
 		{
-			UE_LOG(LogLinker, Warning, TEXT("Asset '%s' has been saved with engine version newer than current and therefore can't be loaded. CurrEngineVersion: %s AssetEngineVersion: %s"), *Filename, *FEngineVersion::Current().ToString(), *Summary.CompatibleWithEngineVersion.ToString() );
+			UE_LOG(LogLinker, Warning, TEXT("Asset '%s' has been saved with engine version newer than current and therefore can't be loaded. CurrEngineVersion: %s AssetEngineVersion: %s"), *Filename, *FEngineVersion::Current().ToString(), *Summary.CompatibleWithEngineVersion.ToString());
 			return LINKER_Failed;
 		}
-		else if( !FPlatformProperties::RequiresCookedData() && !Summary.SavedByEngineVersion.HasChangelist() && FEngineVersion::Current().HasChangelist() )
+		else if (!FPlatformProperties::RequiresCookedData() && !Summary.SavedByEngineVersion.HasChangelist() && FEngineVersion::Current().HasChangelist())
 		{
 			// This warning can be disabled in ini with [Core.System] ZeroEngineVersionWarning=False
 			static struct FInitZeroEngineVersionWarning
@@ -3622,10 +3624,14 @@ void FLinkerLoad::Preload( UObject* Object )
 				}
 			}
 		}
-		else if( Object->GetLinker() )
+		else if (FLinkerLoad* Linker = Object->GetLinker())
 		{
+#if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
+			uint32 const DeferredLoadFlag = (LoadFlags & LOAD_DeferDependencyLoads);
+			TGuardValue<uint32> LoadFlagsGuard(Linker->LoadFlags, Linker->LoadFlags | DeferredLoadFlag);
+#endif
 			// Send to the object's linker.
-			Object->GetLinker()->Preload( Object );
+			Linker->Preload(Object);
 		}
 	}
 }

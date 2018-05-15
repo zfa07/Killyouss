@@ -19,11 +19,23 @@ class ISequencerEditorObjectBinding;
 class IToolkitHost;
 class UMovieSceneSequence;
 
+/** Forward declaration for the default templated channel interface. Include SequencerChannelInterface.h for full definition. */
+template<typename> struct TSequencerChannelInterface;
+
 namespace SequencerMenuExtensionPoints
 {
 	static const FName AddTrackMenu_PropertiesSection("AddTrackMenu_PropertiesSection");
 }
 
+/** Enum representing supported scrubber styles */
+enum class ESequencerScrubberStyle : uint8
+{
+	/** Scrubber is represented as a single thin line for the current time, with a constant-sized thumb. */
+	Vanilla,
+
+	/** Scrubber thumb occupies a full 'display rate' frame, with a single thin line for the current time. Tailored to frame-accuracy scenarios. */
+	FrameBlock,
+};
 
 /** A delegate which will create an auto-key handler. */
 DECLARE_DELEGATE_RetVal_OneParam(TSharedRef<ISequencerTrackEditor>, FOnCreateTrackEditor, TSharedRef<ISequencer>);
@@ -64,9 +76,13 @@ struct FSequencerViewParams
 	/** Whether the sequencer is read-only */
 	bool bReadOnly;
 
+	/** Style of scrubber to use */
+	ESequencerScrubberStyle ScrubberStyle;
+
 	FSequencerViewParams(FString InName = FString())
 		: UniqueName(MoveTemp(InName))
 		, bReadOnly(false)
+		, ScrubberStyle(ESequencerScrubberStyle::Vanilla)
 	{ }
 };
 
@@ -205,20 +221,21 @@ public:
 	virtual TSharedPtr<FExtensibilityManager> GetToolBarExtensibilityManager() const = 0;
 
 	/**
-	 * Register a sequencer channel type. Include SequencerChannelInterface.h for definition.
+	 * Register a sequencer channel type using a default channel interface.
 	 */
 	template<typename ChannelType>
 	void RegisterChannelInterface();
 
 	/**
-	 * Find a sequencer channel for the specified channel type ID
+	 * Register a sequencer channel type using the specified interface.
 	 */
-	ISequencerChannelInterface* FindChannelInterface(uint32 ChannelID) const
-	{
-		const TUniquePtr<ISequencerChannelInterface>* Found = ChannelToEditorInterfaceMap.Find(ChannelID);
-		ensureMsgf(Found, TEXT("No channel interface found for type ID. Did you call RegisterChannelInterface<> for that type?"));
-		return Found ? Found->Get() : nullptr;
-	}
+	template<typename ChannelType>
+	void RegisterChannelInterface(TUniquePtr<ISequencerChannelInterface>&& InInterface);
+
+	/**
+	 * Find a sequencer channel for the specified channel type name
+	 */
+	ISequencerChannelInterface* FindChannelEditorInterface(FName ChannelTypeName) const;
 
 public:
 
@@ -251,6 +268,37 @@ public:
 
 private:
 
-	/** */
-	TMap<uint32, TUniquePtr<ISequencerChannelInterface>> ChannelToEditorInterfaceMap;
+	/** Map of sequencer interfaces for movie scene channel types, keyed on channel UStruct name */
+	TMap<FName, TUniquePtr<ISequencerChannelInterface>> ChannelToEditorInterfaceMap;
 };
+
+
+/**
+ * Register a sequencer channel type using a default channel interface.
+ */
+template<typename ChannelType>
+void ISequencerModule::RegisterChannelInterface()
+{
+	RegisterChannelInterface<ChannelType>(TUniquePtr<ISequencerChannelInterface>(new TSequencerChannelInterface<ChannelType>()));
+}
+
+/**
+ * Register a sequencer channel type using the specified interface.
+ */
+template<typename ChannelType>
+void ISequencerModule::RegisterChannelInterface(TUniquePtr<ISequencerChannelInterface>&& InInterface)
+{
+	const FName ChannelTypeName = ChannelType::StaticStruct()->GetFName();
+	check(!ChannelToEditorInterfaceMap.Contains(ChannelTypeName));
+	ChannelToEditorInterfaceMap.Add(ChannelTypeName, MoveTemp(InInterface));
+}
+
+/**
+ * Find a sequencer channel for the specified channel type name
+ */
+inline ISequencerChannelInterface* ISequencerModule::FindChannelEditorInterface(FName ChannelTypeName) const
+{
+	const TUniquePtr<ISequencerChannelInterface>* Found = ChannelToEditorInterfaceMap.Find(ChannelTypeName);
+	ensureMsgf(Found, TEXT("No channel interface found for type ID. Did you call RegisterChannelInterface<> for that type?"));
+	return Found ? Found->Get() : nullptr;
+}

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "FrameRate.h"
+#include "Misc/FrameRate.h"
 #include "UObject/ObjectMacros.h"
 #include "Evaluation/MovieSceneSequenceTransform.h"
 #include "Evaluation/MovieSceneSectionParameters.h"
@@ -54,9 +54,9 @@ struct FMovieSceneSubSequenceData
 	UPROPERTY()
 	FMovieSceneSequenceTransform RootToSequenceTransform;
 
-	/** The frame resolution of the inner sequence. */
+	/** The tick resolution of the inner sequence. */
 	UPROPERTY()
-	FFrameRate FrameResolution;
+	FFrameRate TickResolution;
 
 	/** This sequence's deterministic sequence ID. Used in editor to reduce the risk of collisions on recompilation. */ 
 	UPROPERTY()

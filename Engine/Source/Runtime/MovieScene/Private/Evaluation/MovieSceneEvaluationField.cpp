@@ -250,11 +250,11 @@ void FMovieSceneEvaluationMetaData::DiffEntities(const FMovieSceneEvaluationMeta
 	}
 }
 
-bool FMovieSceneEvaluationMetaData::IsDirty(UMovieSceneSequence& RootSequence, const FMovieSceneSequenceHierarchy& RootHierarchy, IMovieSceneSequenceTemplateStore& TemplateStore, TRange<FFrameNumber>* OutSubRangeToInvalidate) const
+bool FMovieSceneEvaluationMetaData::IsDirty(const FMovieSceneSequenceHierarchy& RootHierarchy, IMovieSceneSequenceTemplateStore& TemplateStore, TRange<FFrameNumber>* OutSubRangeToInvalidate, TSet<UMovieSceneSequence*>* OutDirtySequences) const
 {
 	bool bDirty = false;
 
-	for (const TTuple<FMovieSceneSequenceID, FGuid>& Pair : SubTemplateSignatures)
+	for (const TTuple<FMovieSceneSequenceID, uint32>& Pair : SubTemplateSerialNumbers)
 	{
 		// Sequence IDs at this point are relative to the root override template
 		const FMovieSceneSubSequenceData* SubData = RootHierarchy.FindSubData(Pair.Key);
@@ -265,7 +265,12 @@ bool FMovieSceneEvaluationMetaData::IsDirty(UMovieSceneSequence& RootSequence, c
 		{
 			FMovieSceneEvaluationTemplate& Template = TemplateStore.AccessTemplate(*SubSequence);
 
-			bThisSequenceIsDirty = Template.TemplateSignature != Pair.Value || Template.SequenceSignature != SubSequence->GetSignature();
+			bThisSequenceIsDirty = Template.TemplateSerialNumber.GetValue() != Pair.Value || Template.SequenceSignature != SubSequence->GetSignature();
+
+			if (bThisSequenceIsDirty && OutDirtySequences)
+			{
+				OutDirtySequences->Add(SubSequence);
+			}
 		}
 
 		if (bThisSequenceIsDirty)

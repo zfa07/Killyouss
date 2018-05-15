@@ -8,6 +8,7 @@
 #include "Tracks/MovieScene3DTransformTrack.h"
 #include "SequenceRecorder.h"
 #include "SequenceRecorderSettings.h"
+#include "SequenceRecorderUtils.h"
 #include "Algo/Transform.h"
 #include "Channels/MovieSceneChannelProxy.h"
 
@@ -50,7 +51,18 @@ void FMovieScene3DTransformSectionRecorder::CreateSection(UObject* InObjectToRec
 	RecordingStartTime = Time;
 
 	MovieScene = InMovieScene;
-	MovieSceneTrack = InMovieScene->AddTrack<UMovieScene3DTransformTrack>(Guid);
+
+	static FName Transform("Transform");
+	MovieSceneTrack = InMovieScene->FindTrack<UMovieScene3DTransformTrack>(Guid, Transform);
+	if (!MovieSceneTrack.IsValid())
+	{
+		MovieSceneTrack = InMovieScene->AddTrack<UMovieScene3DTransformTrack>(Guid);
+	}
+	else
+	{
+		MovieSceneTrack->RemoveAllAnimationData();
+	}
+
 	if(MovieSceneTrack.IsValid())
 	{
 		MovieSceneSection = Cast<UMovieScene3DTransformSection>(MovieSceneTrack->CreateNewSection());
@@ -75,11 +87,16 @@ void FMovieScene3DTransformSectionRecorder::CreateSection(UObject* InObjectToRec
 		FloatChannels[7]->SetDefault(Scale.Y);
 		FloatChannels[8]->SetDefault(Scale.Z);
 
-		MovieSceneSection->SetRange(TRange<FFrameNumber>::All());
+		FFrameRate   TickResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+		FFrameNumber CurrentFrame    = (Time * TickResolution).FloorToFrame();
+
+		MovieSceneSection->SetRange(TRange<FFrameNumber>::Inclusive(CurrentFrame, CurrentFrame));
+
+		MovieSceneSection->TimecodeSource = SequenceRecorderUtils::GetTimecodeSource();
 	}
 }
 
-void FMovieScene3DTransformSectionRecorder::FinalizeSection()
+void FMovieScene3DTransformSectionRecorder::FinalizeSection(float CurrentTime)
 {
 	bool bWasRecording = bRecording;
 	bRecording = false;
@@ -131,8 +148,8 @@ void FMovieScene3DTransformSectionRecorder::FinalizeSection()
 
 				check(RootIndex != INDEX_NONE);
 
-				FFrameRate FrameResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetFrameResolution();
-				const FFrameNumber StartTime = (RecordingStartTime * FrameResolution).FloorToFrame();
+				FFrameRate TickResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+				const FFrameNumber StartTime = (RecordingStartTime * TickResolution).FloorToFrame();
 
 				// we may need to offset the transform here if the animation was not recorded on the root component
 				FTransform InvComponentTransform = AnimRecorder->GetComponentTransform().Inverse();
@@ -169,7 +186,7 @@ void FMovieScene3DTransformSectionRecorder::FinalizeSection()
 						Transform.SetScale3D(RawTrack.ScaleKeys[0]);
 					}
 
-					FFrameNumber AnimationFrame = (AnimSequence->GetTimeAtFrame(KeyIndex) * FrameResolution).FloorToFrame();
+					FFrameNumber AnimationFrame = (AnimSequence->GetTimeAtFrame(KeyIndex) * TickResolution).FloorToFrame();
 					BufferedTransforms.Add(InvComponentTransform * Transform, StartTime + AnimationFrame);
 				}
 			}
@@ -311,6 +328,12 @@ void FMovieScene3DTransformSectionRecorder::FinalizeSection()
 			Spawnable->SpawnTransform = FirstTransform;
 		}
 	}
+
+	FFrameRate   TickResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+	
+	FFrameNumber CurrentFrame    = (CurrentTime * TickResolution).FloorToFrame();
+	
+	MovieSceneSection->ExpandToFrame(CurrentFrame);
 }
 
 void FMovieScene3DTransformSectionRecorder::Record(float CurrentTime)
@@ -326,8 +349,8 @@ void FMovieScene3DTransformSectionRecorder::Record(float CurrentTime)
 			}
 		}
 
-		FFrameRate   FrameResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetFrameResolution();
-		FFrameNumber CurrentFrame    = (CurrentTime * FrameResolution).FloorToFrame();
+		FFrameRate   TickResolution  = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+		FFrameNumber CurrentFrame    = (CurrentTime * TickResolution).FloorToFrame();
 
 		if(bRecording)
 		{

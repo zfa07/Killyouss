@@ -372,9 +372,8 @@ bool FWidgetBlueprintEditor::CanPasteWidgets()
 	TSet<FWidgetReference> Widgets = GetSelectedWidgets();
 	if ( Widgets.Num() == 1 )
 	{
-		FWidgetReference Target = *Widgets.CreateIterator();
-		const bool bIsPanel = Cast<UPanelWidget>(Target.GetTemplate()) != nullptr;
-		return bIsPanel;
+		// Always return true here now since we want to support pasting widgets as siblings
+		return true;
 	}
 	else if ( GetWidgetBlueprintObj()->WidgetTree->RootWidget == nullptr )
 	{
@@ -415,9 +414,16 @@ void FWidgetBlueprintEditor::PasteWidgets()
 		SlotName = NamedSlotSelection->SlotName;
 	}
 
-	FWidgetBlueprintEditorUtils::PasteWidgets(SharedThis(this), GetWidgetBlueprintObj(), Target, SlotName, PasteDropLocation);
+	TArray<UWidget*> PastedWidgets = FWidgetBlueprintEditorUtils::PasteWidgets(SharedThis(this), GetWidgetBlueprintObj(), Target, SlotName, PasteDropLocation);
 
-	//TODO UMG - Select the newly selected pasted widgets.
+	PasteDropLocation = PasteDropLocation + FVector2D(25, 25);
+
+	TSet<FWidgetReference> PastedWidgetRefs;
+	for (UWidget* Widget : PastedWidgets)
+	{
+		PastedWidgetRefs.Add(GetReferenceFromPreview(Widget));
+	}
+	SelectWidgets(PastedWidgetRefs, false);
 }
 
 void FWidgetBlueprintEditor::Tick(float DeltaTime)
@@ -680,9 +686,9 @@ TSharedPtr<ISequencer>& FWidgetBlueprintEditor::GetSequencer()
 		FSequencerInitParams SequencerInitParams;
 		{
 			UWidgetAnimation* NullAnimation = UWidgetAnimation::GetNullAnimation();
-			FFrameRate FrameResolution = NullAnimation->MovieScene->GetFrameResolution();
-			FFrameNumber StartFrame = (InTime  * FrameResolution).FloorToFrame();
-			FFrameNumber EndFrame   = (OutTime * FrameResolution).CeilToFrame();
+			FFrameRate TickResolution = NullAnimation->MovieScene->GetTickResolution();
+			FFrameNumber StartFrame = (InTime  * TickResolution).FloorToFrame();
+			FFrameNumber EndFrame   = (OutTime * TickResolution).CeilToFrame();
 			NullAnimation->MovieScene->SetPlaybackRange(StartFrame, (EndFrame-StartFrame).Value);
 			FMovieSceneEditorData& EditorData = NullAnimation->MovieScene->GetEditorData();
 			EditorData.WorkStart = InTime;

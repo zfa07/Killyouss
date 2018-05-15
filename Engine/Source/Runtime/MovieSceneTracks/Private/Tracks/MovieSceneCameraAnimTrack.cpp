@@ -19,7 +19,7 @@ UMovieSceneSection* UMovieSceneCameraAnimTrack::AddNewCameraAnim(FFrameNumber Ke
 	UMovieSceneCameraAnimSection* const NewSection = Cast<UMovieSceneCameraAnimSection>(CreateNewSection());
 	if (NewSection)
 	{
-		FFrameTime AnimDurationFrames = CameraAnim->AnimLength * GetTypedOuter<UMovieScene>()->GetFrameResolution();
+		FFrameTime AnimDurationFrames = CameraAnim->AnimLength * GetTypedOuter<UMovieScene>()->GetTickResolution();
 		NewSection->InitialPlacement(CameraAnimSections, KeyTime, AnimDurationFrames.FrameNumber.Value, SupportsMultipleRows());
 		NewSection->AnimData.CameraAnim = CameraAnim;
 
@@ -47,7 +47,7 @@ const TArray<UMovieSceneSection*>& UMovieSceneCameraAnimTrack::GetAllSections() 
 
 UMovieSceneSection* UMovieSceneCameraAnimTrack::CreateNewSection()
 {
-	return NewObject<UMovieSceneCameraAnimSection>(this);
+	return NewObject<UMovieSceneCameraAnimSection>(this, NAME_None, RF_Transactional);
 }
 
 

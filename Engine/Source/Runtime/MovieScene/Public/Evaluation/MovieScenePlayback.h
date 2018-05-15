@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "MovieSceneFwd.h"
-#include "FrameTime.h"
+#include "Misc/FrameTime.h"
 #include "Evaluation/MovieSceneSequenceTransform.h"
 
 
@@ -496,10 +496,10 @@ private:
 
 private:
 
-	/** The framerate to be used when interpreting frame time values provided to this class (i.e. moviescene playback frame rate) */
+	/** The framerate to be used when interpreting frame time values provided to this class (i.e. moviescene display rate) */
 	FFrameRate InputRate;
 
-	/** The framerate to be used when returning frame time values from this class (i.e. moviescene frame resolution) */
+	/** The framerate to be used when returning frame time values from this class (i.e. moviescene tick resolution) */
 	FFrameRate OutputRate;
 
 	/** The type of evaluation to use */

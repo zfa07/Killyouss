@@ -12,7 +12,7 @@
 #include "IMovieScenePlayer.h"
 #include "KeyPropertyParams.h"
 #include "MovieSceneBinding.h"
-#include "QualifiedFrameTime.h"
+#include "Misc/QualifiedFrameTime.h"
 #include "Widgets/Input/NumericTypeInterface.h"
 #include "Editor/SequencerWidgets/Public/ITimeSlider.h"
 
@@ -64,6 +64,22 @@ enum class EAllowEditsMode : uint8
 
 	/** Allow edits to go to level only */
 	AllowLevelEditsOnly
+};
+
+/**
+* Defines set key gruops mode.
+*/
+UENUM()
+enum class EKeyGroupMode : uint8
+{
+	/** Key just changed channel */
+	KeyChanged,
+
+	/** Key just one, the parent translation, rotation or scale, when one changes */
+	KeyGroup,
+
+	/** Key All (translation, rotation, scale) when one changes */
+	KeyAll
 };
 
 
@@ -184,7 +200,15 @@ public:
 	 * @param Section The sub-movie scene section containing the sequence instance to get.
 	 */
 	virtual void FocusSequenceInstance(UMovieSceneSubSection& Section) = 0;
-	
+
+	/**
+	 * Suppresses automatic evaluation the specified sequence and signature are the only difference that would prompt a re-evaluation
+	 * 
+	 * @param Sequence        The sequence that the signature relates to
+	 * @param InSignature     The signature to suppress
+	 */
+	virtual void SuppressAutoEvaluation(UMovieSceneSequence* Sequence, const FGuid& InSignature) = 0;
+
 	/**
 	 * Create a new binding for the specified object
 	 */
@@ -232,11 +256,15 @@ public:
 	/** Sets where edits are allowed */
 	virtual void SetAllowEditsMode(EAllowEditsMode AllowEditsMode) = 0;
 
-	/** @return Returns whether key all is enabled in this sequencer */
-	virtual bool GetKeyAllEnabled() const = 0;
+	/** @returns Returns what channels will get keyed when one channel changes */
+	virtual EKeyGroupMode GetKeyGroupMode() const = 0;
 
-	/** Sets whether key all is enabled in this sequencer. */
-	virtual void SetKeyAllEnabled(bool bKeyAllEnabled) = 0;
+	/** Sets which channels are keyed when a channel is keyed 
+	* @param Mode Specifies which channels to key, all (EKeyGroupMode::KeyAll), 
+	* just changed (EKeyGroup::KeyChanged), 
+	* just the group,e.g. Rotation X,Y and Z if any of those are changed (EKeyGroup::KeyGroup)
+	*/
+	virtual void SetKeyGroupMode(EKeyGroupMode Mode) = 0;
 
 	/** @return Returns whether or not to key only interp properties in this sequencer */
 	virtual bool GetKeyInterpPropertiesOnly() const = 0;
@@ -517,24 +545,24 @@ public:
 public:
 
 	/**
-	 * Get the frame resolution of the currently root sequence
+	 * Get the tick resolution of the currently root sequence
 	 */
-	SEQUENCER_API FFrameRate GetRootFrameResolution() const;
+	SEQUENCER_API FFrameRate GetRootTickResolution() const;
 
 	/**
-	 * Get the playback frame rate of the currently root sequence
+	 * Get the display rate of the currently root sequence
 	 */
-	SEQUENCER_API FFrameRate GetRootPlayRate() const;
+	SEQUENCER_API FFrameRate GetRootDisplayRate() const;
 
 	/**
-	 * Get the frame resolution of the currently focused sequence
+	 * Get the tick resolution of the currently focused sequence
 	 */
-	SEQUENCER_API FFrameRate GetFocusedFrameResolution() const;
+	SEQUENCER_API FFrameRate GetFocusedTickResolution() const;
 
 	/**
-	 * Get the playback frame rate of the currently focused sequence
+	 * Get the display rate of the currently focused sequence
 	 */
-	SEQUENCER_API FFrameRate GetFocusedPlayRate() const;
+	SEQUENCER_API FFrameRate GetFocusedDisplayRate() const;
 
 protected:
 	FOnInitializeDetailsPanel InitializeDetailsPanelEvent;

@@ -1,11 +1,11 @@
 // Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
+#if USE_ANDROID_LAUNCH
 #include "Misc/App.h"
 #include "Misc/OutputDeviceError.h"
 #include "LaunchEngineLoop.h"
 #include <string.h>
-#include <jni.h>
 #include <pthread.h>
 #include "Android/AndroidJNI.h"
 #include "Android/AndroidEventManager.h"
@@ -31,6 +31,9 @@
 #include "Modules/ModuleManager.h"
 #include "IMessagingModule.h"
 #include "Android/AndroidStats.h"
+#include "MoviePlayer.h"
+#include <jni.h>
+#include <android/sensor.h>
 
 // Function pointer for retrieving joystick events
 // Function has been part of the OS since Honeycomb, but only appeared in the
@@ -44,7 +47,7 @@ static GetAxesType GetAxes = NULL;
 static const int32_t AxisList[] =
 {
 	AMOTION_EVENT_AXIS_X,
-    AMOTION_EVENT_AXIS_Y,
+	AMOTION_EVENT_AXIS_Y,
 	AMOTION_EVENT_AXIS_Z,
 	AMOTION_EVENT_AXIS_RX,
 	AMOTION_EVENT_AXIS_RY,
@@ -100,6 +103,7 @@ extern void AndroidThunkCpp_InitHMDs();
 extern void AndroidThunkCpp_ShowConsoleWindow();
 extern bool AndroidThunkCpp_VirtualInputIgnoreClick(int, int);
 extern bool AndroidThunkCpp_IsVirtuaKeyboardShown();
+extern void AndroidThunkCpp_RestartApplication();
 
 // Base path for file accesses
 extern FString GFilePathBase;
@@ -257,7 +261,7 @@ extern void AndroidThunkCpp_DismissSplashScreen();
 //Main function called from the android entry point
 int32 AndroidMain(struct android_app* state)
 {
-	FPlatformMisc::LowLevelOutputDebugString(L"Entered AndroidMain()");
+	FPlatformMisc::LowLevelOutputDebugString(L"Entered AndroidMain()\n");
 
 	// Force the first call to GetJavaEnv() to happen on the game thread, allowing subsequent calls to occur on any thread
 	FAndroidApplication::GetJavaEnv();
@@ -332,7 +336,7 @@ int32 AndroidMain(struct android_app* state)
 	FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Final commandline: %s\n"), FCommandLine::Get());
 
 	EventHandlerEvent = FPlatformProcess::GetSynchEventFromPool(false);
-	FPlatformMisc::LowLevelOutputDebugString(L"Created sync event");
+	FPlatformMisc::LowLevelOutputDebugString(L"Created sync event\n");
 	FAppEventManager::GetInstance()->SetEventHandlerEvent(EventHandlerEvent);
 
 	// ready for onCreate to complete
@@ -739,6 +743,12 @@ static int32_t HandleInputCB(struct android_app* app, AInputEvent* event)
 	return 0;
 }
 
+static bool bShouldRestartFromInterrupt = false;
+static bool IsStartupMoviePlaying()
+{
+	return GEngine && GEngine->IsInitialized() && GetMoviePlayer() && GetMoviePlayer()->IsStartupMoviePlaying();
+}
+
 //Called from the event process thread
 static void OnAppCommandCB(struct android_app* app, int32_t cmd)
 {
@@ -867,9 +877,16 @@ static void OnAppCommandCB(struct android_app* app, int32_t cmd)
 		 */
 		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Case APP_CMD_RESUME"));
 		UE_LOG(LogAndroid, Log, TEXT("Case APP_CMD_RESUME"));
-
 		FAppEventManager::GetInstance()->EnqueueAppEvent(APP_EVENT_STATE_ON_RESUME);
 
+		/*
+		* On the initial loading the restart method must be called immediately
+		* in order to restart the app if the startup movie was playing
+		*/
+		if (bShouldRestartFromInterrupt)
+		{
+			AndroidThunkCpp_RestartApplication();
+		}
 		break;
 	case APP_CMD_PAUSE:
 		/**
@@ -878,6 +895,16 @@ static void OnAppCommandCB(struct android_app* app, int32_t cmd)
 		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Case APP_CMD_PAUSE"));
 		UE_LOG(LogAndroid, Log, TEXT("Case APP_CMD_PAUSE"));
 		FAppEventManager::GetInstance()->EnqueueAppEvent(APP_EVENT_STATE_ON_PAUSE);
+
+		/*
+		 * On the initial loading the pause method must be called immediately
+		 * in order to stop the startup movie's sound
+		*/
+		if (IsStartupMoviePlaying())
+		{
+			bShouldRestartFromInterrupt = true;
+			GetMoviePlayer()->ForceCompletion();
+		}
 
 		bNeedToSync = true;
 		break;
@@ -993,3 +1020,5 @@ bool WaitForAndroidLoseFocusEvent(double TimeoutSeconds)
 {
 	return FAppEventManager::GetInstance()->WaitForEventInQueue(EAppEventState::APP_EVENT_STATE_WINDOW_LOST_FOCUS, TimeoutSeconds);
 }
+
+#endif

@@ -77,15 +77,15 @@ void ASequencerKeyActor::PropagateKeyChange()
 		// Mark the track section as dirty
 		TrackSection->Modify();
 
-		FFrameRate   FrameResolution = TrackSection->GetTypedOuter<UMovieScene>()->GetFrameResolution();
-		FFrameNumber FrameNumber     = (KeyTime * FrameResolution).RoundToFrame();
+		FFrameRate   TickResolution  = TrackSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+		FFrameNumber FrameNumber     = (KeyTime * TickResolution).RoundToFrame();
 
 		TArrayView<FMovieSceneFloatChannel*> FloatChannels = TrackSection->GetChannelProxy().GetChannels<FMovieSceneFloatChannel>();
 
 		const FVector Translation = GetActorTransform().GetLocation();
-		FloatChannels[0]->GetInterface().UpdateOrAddKey(FrameNumber, FMovieSceneFloatValue(Translation.X));
-		FloatChannels[1]->GetInterface().UpdateOrAddKey(FrameNumber, FMovieSceneFloatValue(Translation.Y));
-		FloatChannels[2]->GetInterface().UpdateOrAddKey(FrameNumber, FMovieSceneFloatValue(Translation.Z));
+		FloatChannels[0]->GetData().UpdateOrAddKey(FrameNumber, FMovieSceneFloatValue(Translation.X));
+		FloatChannels[1]->GetData().UpdateOrAddKey(FrameNumber, FMovieSceneFloatValue(Translation.Y));
+		FloatChannels[2]->GetData().UpdateOrAddKey(FrameNumber, FMovieSceneFloatValue(Translation.Z));
 
 		// Draw a single transform track based on the data from this key
 		FEditorViewportClient* ViewportClient = StaticCast<FEditorViewportClient*>(GEditor->GetActiveViewport()->GetClient());

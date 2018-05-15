@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
+#if USE_ANDROID_JNI
 #include <jni.h>
 #include <android/log.h>
 
@@ -26,6 +28,8 @@ public:
 	static jmethodID AndroidThunkJava_LaunchURL;
 	static jmethodID AndroidThunkJava_GetAssetManager;
 	static jmethodID AndroidThunkJava_Minimize;
+    static jmethodID AndroidThunkJava_ClipboardCopy;
+    static jmethodID AndroidThunkJava_ClipboardPaste;
 	static jmethodID AndroidThunkJava_ForceQuit;
 	static jmethodID AndroidThunkJava_GetFontDirectory;
 	static jmethodID AndroidThunkJava_Vibrate;
@@ -93,7 +97,8 @@ public:
 	static jmethodID AndroidThunkJava_UseSurfaceViewWorkaround;
 	static jmethodID AndroidThunkJava_SetDesiredViewSize;
 	static jmethodID AndroidThunkJava_VirtualInputIgnoreClick;
-
+	static jmethodID AndroidThunkJava_RestartApplication;
+	
 	// member fields for getting the launch notification
 	static jclass LaunchNotificationClass;
 	static jfieldID LaunchNotificationUsed;
@@ -133,3 +138,4 @@ private:
 	/** Find GooglePlay billing classes and methods */
 	static void FindGooglePlayBillingMethods(JNIEnv* Env);
 };
+#endif

@@ -13,15 +13,20 @@
 #include "CurveEditorSnapMetrics.h"
 #include "EditorStyleSet.h"
 #include "BuiltInChannelEditors.h"
-#include "SKeyEditInterface.h"
 #include "SequencerChannelTraits.h"
 #include "ISequencer.h"
+#include "Channels/FloatChannelKeyProxy.h"
 
 FFloatChannelCurveModel::FFloatChannelCurveModel(TMovieSceneChannelHandle<FMovieSceneFloatChannel> InChannel, UMovieSceneSection* OwningSection, TWeakPtr<ISequencer> InWeakSequencer)
 {
 	ChannelHandle = InChannel;
 	WeakSection = OwningSection;
 	WeakSequencer = InWeakSequencer;
+	if (UMovieSceneSection* Section = WeakSection.Get())
+	{
+		FMovieSceneFloatChannel* Channel = ChannelHandle.Get();
+		Channel->SetTickResolution(Section->GetTypedOuter<UMovieScene>()->GetTickResolution());
+	}
 }
 
 const void* FFloatChannelCurveModel::GetCurve() const
@@ -37,12 +42,6 @@ void FFloatChannelCurveModel::Modify()
 	}
 }
 
-double FFloatChannelCurveModel::GetInputDisplayOffset() const
-{
-	UMovieSceneSection* Section = WeakSection.Get();
-	return Section ? ( FFrameTime(0, 0.5f) / Section->GetTypedOuter<UMovieScene>()->GetFrameResolution() ) : 0.0;
-}
-
 void FFloatChannelCurveModel::AddKeys(TArrayView<const FKeyPosition> InKeyPositions, TArrayView<const FKeyAttributes> InKeyAttributes, TArrayView<TOptional<FKeyHandle>>* OutKeyHandles)
 {
 	check(InKeyPositions.Num() == InKeyAttributes.Num() && (!OutKeyHandles || OutKeyHandles->Num() == InKeyPositions.Num()));
@@ -53,15 +52,16 @@ void FFloatChannelCurveModel::AddKeys(TArrayView<const FKeyPosition> InKeyPositi
 	{
 		Section->Modify();
 
-		TMovieSceneChannel<FMovieSceneFloatValue> ChannelInterface = Channel->GetInterface();
-		FFrameRate FrameResolution = Section->GetTypedOuter<UMovieScene>()->GetFrameResolution();
+		TMovieSceneChannelData<FMovieSceneFloatValue> ChannelData = Channel->GetData();
+		FFrameRate TickResolution = Section->GetTypedOuter<UMovieScene>()->GetTickResolution();
 
 		for (int32 Index = 0; Index < InKeyPositions.Num(); ++Index)
 		{
 			FKeyPosition   Position   = InKeyPositions[Index];
 			FKeyAttributes Attributes = InKeyAttributes[Index];
 
-			FFrameNumber Time = (Position.InputValue * FrameResolution).RoundToFrame();
+			FFrameNumber Time = (Position.InputValue * TickResolution).RoundToFrame();
+			Section->ExpandToFrame(Time);
 
 			FMovieSceneFloatValue Value(Position.OutputValue);
 
@@ -70,10 +70,10 @@ void FFloatChannelCurveModel::AddKeys(TArrayView<const FKeyPosition> InKeyPositi
 			if (Attributes.HasArriveTangent()) { Value.Tangent.ArriveTangent = Attributes.GetArriveTangent(); }
 			if (Attributes.HasLeaveTangent())  { Value.Tangent.LeaveTangent  = Attributes.GetLeaveTangent();  }
 
-			int32 KeyIndex = ChannelInterface.AddKey(Time, Value);
+			int32 KeyIndex = ChannelData.AddKey(Time, Value);
 			if (OutKeyHandles)
 			{
-				(*OutKeyHandles)[Index] = ChannelInterface.GetHandle(KeyIndex);
+				(*OutKeyHandles)[Index] = ChannelData.GetHandle(KeyIndex);
 			}
 		}
 
@@ -88,10 +88,10 @@ bool FFloatChannelCurveModel::Evaluate(double Time, double& OutValue) const
 
 	if (Channel && Section)
 	{
-		FFrameRate FrameResolution = Section->GetTypedOuter<UMovieScene>()->GetFrameResolution();
+		FFrameRate TickResolution = Section->GetTypedOuter<UMovieScene>()->GetTickResolution();
 
 		float ThisValue = 0.f;
-		if (Channel->Evaluate(Time * FrameResolution, ThisValue))
+		if (Channel->Evaluate(Time * TickResolution, ThisValue))
 		{
 			OutValue = ThisValue;
 			return true;
@@ -109,14 +109,14 @@ void FFloatChannelCurveModel::RemoveKeys(TArrayView<const FKeyHandle> InKeys)
 	{
 		Section->Modify();
 
-		TMovieSceneChannel<FMovieSceneFloatValue> ChannelInterface = Channel->GetInterface();
+		TMovieSceneChannelData<FMovieSceneFloatValue> ChannelData = Channel->GetData();
 
 		for (FKeyHandle Handle : InKeys)
 		{
-			int32 KeyIndex = ChannelInterface.GetIndex(Handle);
+			int32 KeyIndex = ChannelData.GetIndex(Handle);
 			if (KeyIndex != INDEX_NONE)
 			{
-				ChannelInterface.RemoveKey(KeyIndex);
+				ChannelData.RemoveKey(KeyIndex);
 			}
 		}
 	}
@@ -131,7 +131,7 @@ void FFloatChannelCurveModel::DrawCurve(const FCurveEditor& CurveEditor, TArray<
 	{
 		FCurveEditorScreenSpace ScreenSpace = CurveEditor.GetScreenSpace();
 
-		FFrameRate   FrameResolution  = Section->GetTypedOuter<UMovieScene>()->GetFrameResolution();
+		FFrameRate   TickResolution   = Section->GetTypedOuter<UMovieScene>()->GetTickResolution();
 
 		const double DisplayOffset    = GetInputDisplayOffset();
 		const double StartTimeSeconds = ScreenSpace.GetInputMin() - DisplayOffset;
@@ -139,7 +139,7 @@ void FFloatChannelCurveModel::DrawCurve(const FCurveEditor& CurveEditor, TArray<
 		const double TimeThreshold    = FMath::Max(0.0001, 1.0 / ScreenSpace.PixelsPerInput());
 		const double ValueThreshold   = FMath::Max(0.0001, 1.0 / ScreenSpace.PixelsPerOutput());
 
-		Channel->PopulateCurvePoints(StartTimeSeconds, EndTimeSeconds, TimeThreshold, ValueThreshold, FrameResolution, InterpolatingPoints);
+		Channel->PopulateCurvePoints(StartTimeSeconds, EndTimeSeconds, TimeThreshold, ValueThreshold, TickResolution, InterpolatingPoints);
 	}
 }
 
@@ -150,14 +150,14 @@ void FFloatChannelCurveModel::GetKeys(const FCurveEditor& CurveEditor, double Mi
 
 	if (Channel && Section)
 	{
-		FFrameRate FrameResolution = Section->GetTypedOuter<UMovieScene>()->GetFrameResolution();
+		FFrameRate TickResolution = Section->GetTypedOuter<UMovieScene>()->GetTickResolution();
 
-		TMovieSceneChannel<FMovieSceneFloatValue> ChannelInterface = Channel->GetInterface();
-		TArrayView<const FFrameNumber>            Times  = ChannelInterface.GetTimes();
-		TArrayView<const FMovieSceneFloatValue>   Values = ChannelInterface.GetValues();
+		TMovieSceneChannelData<FMovieSceneFloatValue> ChannelData = Channel->GetData();
+		TArrayView<const FFrameNumber>          Times  = ChannelData.GetTimes();
+		TArrayView<const FMovieSceneFloatValue> Values = ChannelData.GetValues();
 
-		const FFrameNumber StartFrame = MinTime <= MIN_int32 ? MIN_int32 : (MinTime * FrameResolution).CeilToFrame();
-		const FFrameNumber EndFrame   = MaxTime >= MAX_int32 ? MAX_int32 : (MaxTime * FrameResolution).FloorToFrame();
+		const FFrameNumber StartFrame = MinTime <= MIN_int32 ? MIN_int32 : (MinTime * TickResolution).CeilToFrame();
+		const FFrameNumber EndFrame   = MaxTime >= MAX_int32 ? MAX_int32 : (MaxTime * TickResolution).FloorToFrame();
 
 		const int32 StartingIndex = Algo::LowerBound(Times, StartFrame);
 		const int32 EndingIndex   = Algo::UpperBound(Times, EndFrame);
@@ -166,7 +166,7 @@ void FFloatChannelCurveModel::GetKeys(const FCurveEditor& CurveEditor, double Mi
 		{
 			if (Values[KeyIndex].Value >= MinValue && Values[KeyIndex].Value <= MaxValue)
 			{
-				OutKeyHandles.Add(ChannelInterface.GetHandle(KeyIndex));
+				OutKeyHandles.Add(ChannelData.GetHandle(KeyIndex));
 			}
 		}
 	}
@@ -195,18 +195,18 @@ void FFloatChannelCurveModel::GetKeyPositions(TArrayView<const FKeyHandle> InKey
 
 	if (Channel && Section)
 	{
-		FFrameRate FrameResolution = Section->GetTypedOuter<UMovieScene>()->GetFrameResolution();
+		FFrameRate TickResolution = Section->GetTypedOuter<UMovieScene>()->GetTickResolution();
 
-		TMovieSceneChannel<FMovieSceneFloatValue> ChannelInterface = Channel->GetInterface();
-		TArrayView<const FFrameNumber>            Times            = ChannelInterface.GetTimes();
-		TArrayView<const FMovieSceneFloatValue>   Values           = ChannelInterface.GetValues();
+		TMovieSceneChannelData<FMovieSceneFloatValue> ChannelData = Channel->GetData();
+		TArrayView<const FFrameNumber>          Times  = ChannelData.GetTimes();
+		TArrayView<const FMovieSceneFloatValue> Values = ChannelData.GetValues();
 
 		for (int32 Index = 0; Index < InKeys.Num(); ++Index)
 		{
-			int32 KeyIndex = ChannelInterface.GetIndex(InKeys[Index]);
+			int32 KeyIndex = ChannelData.GetIndex(InKeys[Index]);
 			if (KeyIndex != INDEX_NONE)
 			{
-				OutKeyPositions[Index].InputValue  = Times[KeyIndex] / FrameResolution;
+				OutKeyPositions[Index].InputValue  = Times[KeyIndex] / TickResolution;
 				OutKeyPositions[Index].OutputValue = Values[KeyIndex].Value;
 			}
 		}
@@ -222,18 +222,20 @@ void FFloatChannelCurveModel::SetKeyPositions(TArrayView<const FKeyHandle> InKey
 	{
 		Section->MarkAsChanged();
 
-		FFrameRate FrameResolution = Section->GetTypedOuter<UMovieScene>()->GetFrameResolution();
+		FFrameRate TickResolution = Section->GetTypedOuter<UMovieScene>()->GetTickResolution();
 
-		TMovieSceneChannel<FMovieSceneFloatValue> ChannelInterface = Channel->GetInterface();
+		TMovieSceneChannelData<FMovieSceneFloatValue> ChannelData = Channel->GetData();
 		for (int32 Index = 0; Index < InKeys.Num(); ++Index)
 		{
-			int32 KeyIndex = ChannelInterface.GetIndex(InKeys[Index]);
+			int32 KeyIndex = ChannelData.GetIndex(InKeys[Index]);
 			if (KeyIndex != INDEX_NONE)
 			{
-				FFrameTime NewTime = InKeyPositions[Index].InputValue * FrameResolution;
+				FFrameNumber NewTime = (InKeyPositions[Index].InputValue * TickResolution).FloorToFrame();
 
-				KeyIndex = ChannelInterface.MoveKey(KeyIndex, NewTime.FloorToFrame());
-				ChannelInterface.GetValues()[KeyIndex].Value = InKeyPositions[Index].OutputValue;
+				KeyIndex = ChannelData.MoveKey(KeyIndex, NewTime);
+				ChannelData.GetValues()[KeyIndex].Value = InKeyPositions[Index].OutputValue;
+
+				Section->ExpandToFrame(NewTime);
 			}
 		}
 
@@ -247,15 +249,15 @@ void FFloatChannelCurveModel::GetKeyAttributes(TArrayView<const FKeyHandle> InKe
 	UMovieSceneSection*      Section = WeakSection.Get();
 	if (Channel && Section)
 	{
-		TMovieSceneChannel<FMovieSceneFloatValue> ChannelInterface = Channel->GetInterface();
-		TArrayView<const FFrameNumber>    Times  = ChannelInterface.GetTimes();
-		TArrayView<FMovieSceneFloatValue> Values = ChannelInterface.GetValues();
+		TMovieSceneChannelData<FMovieSceneFloatValue> ChannelData = Channel->GetData();
+		TArrayView<const FFrameNumber>    Times  = ChannelData.GetTimes();
+		TArrayView<FMovieSceneFloatValue> Values = ChannelData.GetValues();
 
-		float TimeInterval = Section->GetTypedOuter<UMovieScene>()->GetFrameResolution().AsInterval();
+		float TimeInterval = Section->GetTypedOuter<UMovieScene>()->GetTickResolution().AsInterval();
 
 		for (int32 Index = 0; Index < InKeys.Num(); ++Index)
 		{
-			const int32 KeyIndex = ChannelInterface.GetIndex(InKeys[Index]);
+			const int32 KeyIndex = ChannelData.GetIndex(InKeys[Index]);
 			if (KeyIndex != INDEX_NONE)
 			{
 				const FMovieSceneFloatValue& KeyValue    = Values[KeyIndex];
@@ -275,6 +277,15 @@ void FFloatChannelCurveModel::GetKeyAttributes(TArrayView<const FKeyHandle> InKe
 					{
 						Attributes.SetLeaveTangent(KeyValue.Tangent.LeaveTangent / TimeInterval);
 					}
+					if (KeyValue.InterpMode == RCIM_Cubic)
+					{
+						Attributes.SetTangentWeightMode(KeyValue.Tangent.TangentWeightMode);
+						if (KeyValue.Tangent.TangentWeightMode != RCTWM_WeightedNone)
+						{
+							Attributes.SetArriveTangentWeight(KeyValue.Tangent.ArriveTangentWeight);
+							Attributes.SetLeaveTangentWeight(KeyValue.Tangent.LeaveTangentWeight);
+						}
+					}
 				}
 			}
 		}
@@ -290,27 +301,71 @@ void FFloatChannelCurveModel::SetKeyAttributes(TArrayView<const FKeyHandle> InKe
 		bool bAutoSetTangents = false;
 		Section->MarkAsChanged();
 
-		TMovieSceneChannel<FMovieSceneFloatValue> ChannelInterface = Channel->GetInterface();
-		TArrayView<FMovieSceneFloatValue> Values = ChannelInterface.GetValues();
+		TMovieSceneChannelData<FMovieSceneFloatValue> ChannelData = Channel->GetData();
+		TArrayView<FMovieSceneFloatValue> Values = ChannelData.GetValues();
 
-		float TimeInterval = Section->GetTypedOuter<UMovieScene>()->GetFrameResolution().AsInterval();
+		FFrameRate TickResolution = Section->GetTypedOuter<UMovieScene>()->GetTickResolution();
+		float TimeInterval = TickResolution.AsInterval();
 
 		for (int32 Index = 0; Index < InKeys.Num(); ++Index)
 		{
-			const int32 KeyIndex = ChannelInterface.GetIndex(InKeys[Index]);
+			const int32 KeyIndex = ChannelData.GetIndex(InKeys[Index]);
 			if (KeyIndex != INDEX_NONE)
 			{
 				const FKeyAttributes&  Attributes = InAttributes[Index];
 				FMovieSceneFloatValue& KeyValue   = Values[KeyIndex];
-
 				if (Attributes.HasInterpMode())    { KeyValue.InterpMode  = Attributes.GetInterpMode();  bAutoSetTangents = true; }
-				if (Attributes.HasTangentMode())   { KeyValue.TangentMode = Attributes.GetTangentMode(); bAutoSetTangents = true; }
+				if (Attributes.HasTangentMode())
+				{
+					KeyValue.TangentMode = Attributes.GetTangentMode();
+					if (KeyValue.TangentMode == RCTM_Auto)
+					{
+						KeyValue.Tangent.TangentWeightMode = RCTWM_WeightedNone;
+					}
+					bAutoSetTangents = true;
+				}
+				if (Attributes.HasTangentWeightMode()) 
+				{ 
+					if (KeyValue.Tangent.TangentWeightMode == RCTWM_WeightedNone) //set tangent weights to default use
+					{
+						TArrayView<const FFrameNumber> Times = Channel->GetTimes();
+						const float OneThird = 1.0f / 3.0f;
+
+						//calculate a tangent weight based upon tangent and time difference
+						//calculate arrive tangent weight
+						if (KeyIndex > 0 )
+						{
+							const float X = TickResolution.AsSeconds(Times[KeyIndex].Value - Times[KeyIndex - 1].Value);
+							const float ArriveTangentNormal = KeyValue.Tangent.ArriveTangent / (TimeInterval);
+							const float Y = ArriveTangentNormal * X;
+							KeyValue.Tangent.ArriveTangentWeight = FMath::Sqrt(X*X + Y * Y) * OneThird;
+						}
+						//calculate leave weight
+						if(KeyIndex < ( Times.Num() - 1))
+						{
+							const float X = TickResolution.AsSeconds(Times[KeyIndex].Value - Times[KeyIndex + 1].Value);
+							const float LeaveTangentNormal = KeyValue.Tangent.LeaveTangent / (TimeInterval);
+							const float Y = LeaveTangentNormal * X;
+							KeyValue.Tangent.LeaveTangentWeight = FMath::Sqrt(X*X + Y*Y) * OneThird;
+						}
+					}
+					KeyValue.Tangent.TangentWeightMode = Attributes.GetTangentWeightMode();
+
+					if( KeyValue.Tangent.TangentWeightMode != RCTWM_WeightedNone )
+					{
+						if (KeyValue.TangentMode != RCTM_User && KeyValue.TangentMode != RCTM_Break)
+						{
+							KeyValue.TangentMode = RCTM_User;
+						}
+					}
+				}
 
 				if (Attributes.HasArriveTangent())
 				{
 					if (KeyValue.TangentMode == RCTM_Auto)
 					{
 						KeyValue.TangentMode = RCTM_User;
+						KeyValue.Tangent.TangentWeightMode = RCTWM_WeightedNone;
 					}
 
 					KeyValue.Tangent.ArriveTangent = Attributes.GetArriveTangent() * TimeInterval;
@@ -325,12 +380,44 @@ void FFloatChannelCurveModel::SetKeyAttributes(TArrayView<const FKeyHandle> InKe
 					if (KeyValue.TangentMode == RCTM_Auto)
 					{
 						KeyValue.TangentMode = RCTM_User;
+						KeyValue.Tangent.TangentWeightMode = RCTWM_WeightedNone;
 					}
 
 					KeyValue.Tangent.LeaveTangent = Attributes.GetLeaveTangent() * TimeInterval;
 					if (KeyValue.InterpMode == RCIM_Cubic && KeyValue.TangentMode != RCTM_Break)
 					{
 						KeyValue.Tangent.ArriveTangent = KeyValue.Tangent.LeaveTangent;
+					}
+				}
+
+				if (Attributes.HasArriveTangentWeight())
+				{
+					if (KeyValue.TangentMode == RCTM_Auto)
+					{
+						KeyValue.TangentMode = RCTM_User;
+						KeyValue.Tangent.TangentWeightMode = RCTWM_WeightedNone;
+					}
+
+					KeyValue.Tangent.ArriveTangentWeight = Attributes.GetArriveTangentWeight(); 
+					if (KeyValue.InterpMode == RCIM_Cubic && KeyValue.TangentMode != RCTM_Break)
+					{
+						KeyValue.Tangent.LeaveTangentWeight = KeyValue.Tangent.ArriveTangentWeight;
+					}
+				}
+
+				if (Attributes.HasLeaveTangentWeight())
+				{
+				
+					if (KeyValue.TangentMode == RCTM_Auto)
+					{
+						KeyValue.TangentMode = RCTM_User;
+						KeyValue.Tangent.TangentWeightMode = RCTWM_WeightedNone;
+					}
+
+					KeyValue.Tangent.LeaveTangentWeight = Attributes.GetLeaveTangentWeight();
+					if (KeyValue.InterpMode == RCIM_Cubic && KeyValue.TangentMode != RCTM_Break)
+					{
+						KeyValue.Tangent.ArriveTangentWeight = KeyValue.Tangent.LeaveTangentWeight;
 					}
 				}
 			}
@@ -373,81 +460,113 @@ void FFloatChannelCurveModel::SetCurveAttributes(const FCurveAttributes& InCurve
 	}
 }
 
-class SCurveEditorKeyEditInterface : public SCompoundWidget
+void FFloatChannelCurveModel::CreateKeyProxies(TArrayView<const FKeyHandle> InKeyHandles, TArrayView<UObject*> OutObjects)
 {
-public:
-	SLATE_BEGIN_ARGS(SCurveEditorKeyEditInterface){}
-	SLATE_END_ARGS()
-
-	void Construct(
-		const FArguments& InArgs,
-		TSharedRef<ISequencer> InSequencer,
-		FCurveModelID InCurveID,
-		TWeakPtr<FCurveEditor> InWeakCurveEditor,
-		TWeakObjectPtr<UMovieSceneSection> InWeakSection,
-		TMovieSceneChannelHandle<FMovieSceneFloatChannel> InChannelHandle
-		)
+	for (int32 Index = 0; Index < InKeyHandles.Num(); ++Index)
 	{
-		CachedSelectionSerialNumber = 0;
+		UFloatChannelKeyProxy* NewProxy = NewObject<UFloatChannelKeyProxy>(GetTransientPackage(), NAME_None);
 
-		CurveID         = InCurveID;
-		WeakCurveEditor = InWeakCurveEditor;
-		WeakSection     = InWeakSection;
-		ChannelHandle   = InChannelHandle;
-
-		ChildSlot
-		[
-			SAssignNew(Interface, SKeyEditInterface, InSequencer)
-			.EditData(this, &SCurveEditorKeyEditInterface::UpdateAndRetrieveEditData)
-		];
+		NewProxy->Initialize(InKeyHandles[Index], ChannelHandle, WeakSection);
+		OutObjects[Index] = NewProxy;
 	}
+}
 
-	virtual void Tick( const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime )
+void FFloatChannelCurveModel::GetTimeRange(double& MinTime, double& MaxTime) const
+{
+	FMovieSceneFloatChannel* Channel = ChannelHandle.Get();
+	UMovieSceneSection*      Section = WeakSection.Get();
+
+	if (Channel && Section)
 	{
-		TSharedPtr<FCurveEditor> CurveEditor = WeakCurveEditor.Pin();
-		if (CurveEditor.IsValid() && CurveEditor->Selection.GetSerialNumber() != CachedSelectionSerialNumber)
+		TArrayView<const FFrameNumber> Times = Channel->GetData().GetTimes();
+		if (Times.Num() == 0)
 		{
-			Interface->Initialize();
-			CachedSelectionSerialNumber = CurveEditor->Selection.GetSerialNumber();
+			MinTime = 0.f;
+			MaxTime = 0.f;
+		}
+		else
+		{
+			FFrameRate TickResolution = Section->GetTypedOuter<UMovieScene>()->GetTickResolution();
+			double ToTime = TickResolution.AsInterval();
+			MinTime = static_cast<double> (Times[0].Value) * ToTime;
+			MaxTime = static_cast<double>(Times[Times.Num() - 1].Value) * ToTime;
 		}
 	}
+}
 
-private:
+/*	 Finds min/max for cubic curves:
+Looks for feature points in the signal(determined by change in direction of local tangent), these locations are then re-examined in closer detail recursively
+Similar to function in RichCurve but usees the Channel::Evaluate function, instead of CurveModel::Eval*/
 
-	FKeyEditData UpdateAndRetrieveEditData() const
+void FFloatChannelCurveModel::FeaturePointMethod(double StartTime, double EndTime, double StartValue, double Mu, int Depth, int MaxDepth, double& MaxV, double& MinVal) const
+{
+	if (Depth >= MaxDepth)
 	{
-		FKeyEditData EditData;
+		return;
+	}
+	double PrevValue = StartValue;
+	double EvalValue;
+	Evaluate(StartTime - Mu, EvalValue);
+	double PrevTangent = StartValue - EvalValue;
+	EndTime += Mu;
+	for (double f = StartTime + Mu; f < EndTime; f += Mu)
+	{
+		double Value;
+		Evaluate(f, Value);
 
-		TSharedPtr<FCurveEditor> CurveEditor = WeakCurveEditor.Pin();
-		if (CurveEditor.IsValid())
+		MaxV = FMath::Max(Value, MaxV);
+		MinVal = FMath::Min(Value, MinVal);
+		double CurTangent = Value - PrevValue;
+		if (FMath::Sign(CurTangent) != FMath::Sign(PrevTangent))
 		{
-			const FKeyHandleSet* SelectedKeys = CurveEditor->Selection.FindForCurve(CurveID.GetValue());
-			if (SelectedKeys && SelectedKeys->Num() == 1)
+			//feature point centered around the previous tangent
+			double FeaturePointTime = f - Mu * 2.0f;
+			double NewVal;
+			Evaluate(FeaturePointTime, NewVal);
+			FeaturePointMethod(FeaturePointTime, f,NewVal, Mu*0.4f, Depth + 1, MaxDepth, MaxV, MinVal);
+		}
+		PrevTangent = CurTangent;
+		PrevValue = Value;
+	}
+}
+
+void FFloatChannelCurveModel::GetValueRange(double& MinValue, double& MaxValue) const
+{
+	FMovieSceneFloatChannel* Channel = ChannelHandle.Get();
+	UMovieSceneSection*      Section = WeakSection.Get();
+
+	if (Channel && Section)
+	{
+		TArrayView<const FFrameNumber> Times = Channel->GetData().GetTimes();
+		TArrayView<const FMovieSceneFloatValue>   Values = Channel->GetData().GetValues();
+
+		if (Times.Num() == 0)
+		{
+			MinValue = MaxValue = 0.f;
+		}
+		else
+		{
+			FFrameRate TickResolution = Section->GetTypedOuter<UMovieScene>()->GetTickResolution();
+			double ToTime = TickResolution.AsInterval();
+			int32 LastKeyIndex = Values.Num() - 1;
+			MinValue = MaxValue = Values[0].Value;
+
+			for (int32 i = 0; i < Values.Num(); i++)
 			{
-				using namespace Sequencer;
-				EditData.KeyStruct = GetKeyStruct(ChannelHandle, SelectedKeys->AsArray()[0]);
-				EditData.OwningSection = WeakSection;
+				const FMovieSceneFloatValue& Key = Values[i];
+
+				MinValue = FMath::Min(MinValue,(double) Key.Value);
+				MaxValue = FMath::Max(MaxValue, (double)Key.Value);
+
+				if (Key.InterpMode == RCIM_Cubic && i != LastKeyIndex)
+				{
+					const FMovieSceneFloatValue& NextKey = Values[i + 1];
+					double KeyTime = static_cast<double>(Times[i].Value) *ToTime;
+					double NextTime = static_cast<double>(Times[i +1].Value) *ToTime;
+					double TimeStep = (NextTime - KeyTime) * 0.2f;
+					FeaturePointMethod(KeyTime, NextTime, Key.Value, TimeStep, 0, 3, MaxValue, MinValue);
+				}
 			}
 		}
-
-		return EditData;
 	}
-
-	TOptional<FCurveModelID> CurveID;
-	TWeakPtr<FCurveEditor> WeakCurveEditor;
-	TWeakObjectPtr<UMovieSceneSection> WeakSection;
-	TMovieSceneChannelHandle<FMovieSceneFloatChannel> ChannelHandle;
-	uint32 CachedSelectionSerialNumber;
-	TSharedPtr<SKeyEditInterface> Interface;
-};
-
-TSharedPtr<SWidget> FFloatChannelCurveModel::CreateEditUI(TSharedPtr<FCurveEditor> InCurveEditor, FCurveModelID ThisCurveID)
-{
-	TSharedPtr<ISequencer> Sequencer = WeakSequencer.Pin();
-	if (Sequencer.IsValid())
-	{
-		return SNew(SCurveEditorKeyEditInterface, Sequencer.ToSharedRef(), ThisCurveID, TWeakPtr<FCurveEditor>(InCurveEditor), WeakSection, ChannelHandle);
-	}
-
-	return nullptr;
 }

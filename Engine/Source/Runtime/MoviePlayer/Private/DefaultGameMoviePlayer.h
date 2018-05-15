@@ -73,11 +73,14 @@ public:
 	virtual bool PlayEarlyStartupMovies() override;
 	virtual bool PlayMovie() override;
 	virtual void StopMovie() override;
-	virtual void WaitForMovieToFinish() override;
+	virtual void WaitForMovieToFinish(bool bAllowEngineTick = false) override;
 	virtual bool IsLoadingFinished() const override;
 	virtual bool IsMovieCurrentlyPlaying() const override;
 	virtual bool LoadingScreenIsPrepared() const override;
 	virtual void SetupLoadingScreenFromIni() override;
+	
+	/** Check if the initial movie(s) is still playing */
+	virtual bool IsStartupMoviePlaying() const override { return IsMoviePlaying; };
 
 	virtual FOnPrepareLoadingScreen& OnPrepareLoadingScreen() override { return OnPrepareLoadingScreenDelegate; }
 	virtual FOnMoviePlaybackFinished& OnMoviePlaybackFinished() override { return OnMoviePlaybackFinishedDelegate; }
@@ -98,6 +101,9 @@ public:
 
 	virtual FString GetMovieName() override;
 	virtual bool IsLastMovieInPlaylist() override;
+
+	virtual void ForceCompletion() override;
+
 	float GetViewportDPIScale() const;
 
 private:
@@ -151,6 +157,9 @@ private:
 
 	/** True if the game thread has finished loading */
 	FThreadSafeCounter LoadingIsDone;
+
+	/** True if the movie player is not yet finished */
+	bool IsMoviePlaying;
 
 	/** User has called finish (needed if LoadingScreenAttributes.bAutoCompleteWhenLoadingCompletes is off) */
 	bool bUserCalledFinish;

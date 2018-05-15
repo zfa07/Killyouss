@@ -146,7 +146,7 @@ void FColorPropertySection::ConsolidateColorCurves( TArray< TTuple<float, FLinea
 			FloatChannels[2]->Evaluate(Time, ColorAtTime.B);
 			FloatChannels[3]->Evaluate(Time, ColorAtTime.A);
 
-			OutColorKeys.Add(MakeTuple(float(Time / TimeConverter.GetFrameResolution()), ColorAtTime));
+			OutColorKeys.Add(MakeTuple(float(Time / TimeConverter.GetTickResolution()), ColorAtTime));
 		}
 	}
 
@@ -172,7 +172,7 @@ FLinearColor FColorPropertySection::GetPropertyValueAsLinearColor() const
 			if (UObject* Object = WeakObject.Get())
 			{
 				// Access the editor data for the float channels which define how to extract the property value from the object
-				TArrayView<const TMovieSceneExternalValue<float>> ExternalValues = Section->GetChannelProxy().GetAllSpecializedEditorData<FMovieSceneFloatChannel>();
+				TArrayView<const TMovieSceneExternalValue<float>> ExternalValues = Section->GetChannelProxy().GetAllExtendedEditorData<FMovieSceneFloatChannel>();
 
 				FTrackInstancePropertyBindings* BindingsPtr = PropertyBindings.IsSet() ? &PropertyBindings.GetValue() : nullptr;
 

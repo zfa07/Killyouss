@@ -83,7 +83,7 @@ namespace AndroidTexFormat
 /**
  * FAndroidTargetPlatform, abstraction for cooking Android platforms
  */
-class FAndroidTargetPlatform : public TTargetPlatformBase<FAndroidPlatformProperties>
+class ANDROIDTARGETPLATFORM_API FAndroidTargetPlatform : public TTargetPlatformBase<FAndroidPlatformProperties>
 {
 public:
 
@@ -95,7 +95,7 @@ public:
 	/**
 	 * Destructor
 	 */
-	~FAndroidTargetPlatform();
+	virtual ~FAndroidTargetPlatform();
 
 public:
 
@@ -240,6 +240,8 @@ public:
 
 	//~ End ITargetPlatform Interface
 
+	virtual void InitializeDeviceDetection();
+	
 protected:
 
 	/**
@@ -274,7 +276,7 @@ protected:
 	FConfigFile EngineSettings;
 #endif //WITH_ENGINE
 
-private:
+protected:
 
 	// Handles when the ticker fires.
 	bool HandleTicker( float DeltaTime );
@@ -318,7 +320,10 @@ private:
 class FAndroid_DXTTargetPlatform : public FAndroidTargetPlatform
 {
 public:
-	FAndroid_DXTTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient) {}
+	FAndroid_DXTTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient)
+	{
+		this->PlatformInfo = PlatformInfo::FindPlatformInfo("Android_DXT");
+	}
 
 	virtual FString GetAndroidVariantName() const override
 	{
@@ -364,7 +369,10 @@ public:
 class FAndroid_ATCTargetPlatform : public FAndroidTargetPlatform
 {
 public:
-	FAndroid_ATCTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient) {}
+	FAndroid_ATCTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient)
+	{
+		this->PlatformInfo = PlatformInfo::FindPlatformInfo("Android_ATC");
+	}
 
 	virtual FString GetAndroidVariantName() const override
 	{
@@ -410,7 +418,10 @@ public:
 class FAndroid_ASTCTargetPlatform : public FAndroidTargetPlatform
 {
 public:
-	FAndroid_ASTCTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient) {}
+	FAndroid_ASTCTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient) 
+	{
+		this->PlatformInfo = PlatformInfo::FindPlatformInfo("Android_ASTC");
+	}
 
 	virtual FString GetAndroidVariantName() const override
 	{
@@ -537,7 +548,10 @@ public:
 class FAndroid_PVRTCTargetPlatform : public FAndroidTargetPlatform
 {
 public:
-	FAndroid_PVRTCTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient) {}
+	FAndroid_PVRTCTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient)
+	{
+		this->PlatformInfo = PlatformInfo::FindPlatformInfo("Android_PVRTC");
+	}
 
 	virtual FString GetAndroidVariantName() const override
 	{
@@ -588,7 +602,10 @@ class FAndroid_ETC2TargetPlatform : public FAndroidTargetPlatform
 {
 public:
 
-	FAndroid_ETC2TargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient) {}
+	FAndroid_ETC2TargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient)
+	{
+		this->PlatformInfo = PlatformInfo::FindPlatformInfo("Android_ETC2");
+	}
 
 	virtual FText DisplayName() const override
 	{
@@ -635,8 +652,10 @@ class FAndroid_ETC1TargetPlatform : public FAndroidTargetPlatform
 {
 public:
 
-	FAndroid_ETC1TargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient) {}
-
+	FAndroid_ETC1TargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient)
+	{
+		this->PlatformInfo = PlatformInfo::FindPlatformInfo("Android_ETC1");
+	}
 
 	virtual FText DisplayName() const override
 	{
@@ -688,7 +707,10 @@ class FAndroid_MultiTargetPlatform : public FAndroidTargetPlatform
 	FString FormatTargetString;
 
 public:
-	FAndroid_MultiTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient) { }
+	FAndroid_MultiTargetPlatform(bool bIsClient) : FAndroidTargetPlatform(bIsClient)
+	{
+		this->PlatformInfo = PlatformInfo::FindPlatformInfo("Android_Multi");
+	}
 
 	// set up all of the multiple formats together into this one
 	void LoadFormats(TArray<FAndroidTargetPlatform*> SingleFormatTPs)

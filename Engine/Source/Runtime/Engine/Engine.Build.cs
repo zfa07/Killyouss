@@ -26,6 +26,7 @@ public class Engine : ModuleRules
 				"TargetPlatform",
 				"ImageWrapper",
 				"HeadMountedDisplay",
+				"EyeTracker",
 				"MRMesh",
 				"Advertising",
 				"NetworkReplayStreaming",
@@ -78,7 +79,6 @@ public class Engine : ModuleRules
 				"GameplayTags",
 				"DatabaseSupport",
 				"PacketHandler",
-				"HardwareSurvey",
                 "AudioPlatformConfiguration",
 				"MeshDescription",
 			}
@@ -98,6 +98,8 @@ public class Engine : ModuleRules
 				"AnalyticsET",
 			}
 		);
+
+		DynamicallyLoadedModuleNames.Add("EyeTracker");
 
 		if (Target.bUseXGEController &&
 			Target.Type == TargetType.Editor &&
@@ -188,6 +190,7 @@ public class Engine : ModuleRules
 		{
 			PrivateIncludePathModuleNames.AddRange(
 				new string[] {
+					"Media",
 					"SlateNullRenderer",
 					"SlateRHIRenderer"
 				}
@@ -195,6 +198,7 @@ public class Engine : ModuleRules
 
 			DynamicallyLoadedModuleNames.AddRange(
 				new string[] {
+					"Media",
 					"SlateNullRenderer",
 					"SlateRHIRenderer"
 				}
@@ -388,7 +392,7 @@ public class Engine : ModuleRules
 			PublicFrameworks.AddRange(new string[] { "AVFoundation", "CoreVideo", "CoreMedia" });
 		}
 
-		if (Target.Platform == UnrealTargetPlatform.Android)
+		if (Target.IsInPlatformGroup(UnrealPlatformGroup.Android))
 		{
 			AddEngineThirdPartyPrivateStaticDependencies(Target,
 				"UEOgg",

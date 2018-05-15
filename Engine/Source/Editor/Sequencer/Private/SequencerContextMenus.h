@@ -59,9 +59,13 @@ private:
 
 	void SplitSection();
 
+	void AutoSizeSection();
+
 	void ReduceKeys();
 
 	bool IsTrimmable() const;
+
+	bool CanAutoSize() const;
 
 	bool CanReduceKeys() const;
 
@@ -91,8 +95,8 @@ private:
 	/** The time that we clicked on to summon this menu */
 	FFrameTime MouseDownTime;
 
-	TMap<uint32, TArray<TMovieSceneChannelHandle<void>>> ChannelsByType;
-	TMap<uint32, TArray<UMovieSceneSection*>> SectionsByType;
+	TMap<FName, TArray<FMovieSceneChannelHandle>> ChannelsByType;
+	TMap<FName, TArray<UMovieSceneSection*>> SectionsByType;
 };
 
 /** Arguments required for a paste operation */

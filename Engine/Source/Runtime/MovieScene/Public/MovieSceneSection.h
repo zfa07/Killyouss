@@ -3,14 +3,16 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "FrameTime.h"
+#include "Misc/FrameTime.h"
 #include "UObject/ObjectMacros.h"
 #include "MovieSceneFwd.h"
 #include "KeyParams.h"
+#include "MovieScene.h"
 #include "MovieSceneSignedObject.h"
 #include "Evaluation/Blending/MovieSceneBlendType.h"
 #include "Generators/MovieSceneEasingFunction.h"
 #include "MovieSceneFrameMigration.h"
+#include "Misc/QualifiedFrameTime.h"
 #include "MovieSceneSection.generated.h"
 
 class FStructOnScope;
@@ -247,6 +249,14 @@ public:
 		return SectionRange.Value.Contains(Position);
 	}
 
+	/*
+	 * Returns the range to auto size this section to, if there is one. This defaults to the 
+	 * range of all the keys.
+	 *
+	 * @return the range of this section to auto size to
+	 */
+	MOVIESCENE_API virtual TOptional<TRange<FFrameNumber> > GetAutoSizeRange() const;
+
 	/**
 	 * Gets this section's blend type
 	 */
@@ -291,7 +301,7 @@ public:
 	 * @param SplitTime The time at which to split
 	 * @return The newly created split section
 	 */
-	MOVIESCENE_API virtual UMovieSceneSection* SplitSection(FFrameNumber SplitTime);
+	MOVIESCENE_API virtual UMovieSceneSection* SplitSection(FQualifiedFrameTime SplitTime);
 
 	/**
 	 * Trim a section at the trim time
@@ -299,7 +309,7 @@ public:
 	 * @param TrimTime The time at which to trim
 	 * @param bTrimLeft Whether to trim left or right
 	 */
-	MOVIESCENE_API virtual void TrimSection(FFrameNumber TrimTime, bool bTrimLeft);
+	MOVIESCENE_API virtual void TrimSection(FQualifiedFrameTime TrimTime, bool bTrimLeft);
 
 	/**
 	 * Get the data structure representing the specified keys.
@@ -440,6 +450,13 @@ public:
 
 	/** Does this movie section support infinite ranges for evaluation */
 	MOVIESCENE_API bool GetSupportsInfiniteRange() const { return bSupportsInfiniteRange; }
+
+	/**
+	*  Whether or not we draw a curve for a particular channel owned by this section.
+	*  Defaults to true.
+	*/
+	virtual bool ShowCurveForChannel(const void *Channel) const  { return true; }
+
 protected:
 
 	//~ UObject interface
@@ -457,8 +474,14 @@ public:
 	/** The range in which this section is active */
 	UPROPERTY(EditAnywhere, Category="Section")
 	FMovieSceneFrameRange SectionRange;
-private:
 
+#if WITH_EDITORONLY_DATA
+	/** The timecode at which this movie scene section is based (ie. when it was recorded) */
+	UPROPERTY(EditAnywhere, Category="Section")
+	FMovieSceneTimecodeSource TimecodeSource;
+#endif
+
+private:
 
 	/** The amount of time to prepare this section for evaluation before it actually starts. */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, Category="Section", meta=(UIMin=0))
@@ -514,6 +537,10 @@ protected:
 	UPROPERTY()
 	FOptionalMovieSceneBlendType BlendType;
 
-	/** Shared channel proxy - to be populated and invalidated by derived types */
+	/**
+	 * Channel proxy that contains all the channels in this section - must be populated and invalidated by derived types.
+	 * Must be re-allocated any time any channel pointer in derived types is reallocated (such as channel data stored in arrays)
+	 * to ensure that any weak handles to channels are invalidated correctly. Allocation is via MakeShared<FMovieSceneChannelProxy>().
+	 */
 	TSharedPtr<FMovieSceneChannelProxy> ChannelProxy;
 };

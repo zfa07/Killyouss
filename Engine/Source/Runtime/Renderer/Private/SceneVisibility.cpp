@@ -1732,7 +1732,7 @@ struct FRelevancePacket
 
 			if (PrimitiveSceneInfo->bIsUsingCustomLODRules)
 			{
-				LODToRender = PrimitiveSceneInfo->Proxy->GetCustomLOD(View, ViewData.LODScale, ViewData.ForcedLODLevel, MeshScreenSizeSquared);
+				LODToRender = PrimitiveSceneInfo->Proxy->GetCustomLOD(View, View.LODDistanceFactor, ViewData.ForcedLODLevel, MeshScreenSizeSquared);
 			}
 			else
 			{
@@ -1745,7 +1745,7 @@ struct FRelevancePacket
 
 			if (OutHasViewCustomDataMasks[PrimitiveIndex] != 0) // Has a relevance for this view
 			{
-				UserViewCustomData = PrimitiveSceneInfo->Proxy->InitViewCustomData(View, ViewData.LODScale, PrimitiveCustomDataMemStack, true, &LODToRender, MeshScreenSizeSquared);
+				UserViewCustomData = PrimitiveSceneInfo->Proxy->InitViewCustomData(View, View.LODDistanceFactor, PrimitiveCustomDataMemStack, true, &LODToRender, MeshScreenSizeSquared);
 
 				if (UserViewCustomData != nullptr)
 				{
@@ -1926,7 +1926,12 @@ static void ComputeAndMarkRelevanceForViewParallel(
 	Packets.Reserve(EstimateOfNumPackets);
 
 	bool WillExecuteInParallel = FApp::ShouldUseThreadingForPerformance() && CVarParallelInitViews.GetValueOnRenderThread() > 0;
-	View.PrimitiveCustomDataMemStack.Reserve(WillExecuteInParallel ? EstimateOfNumPackets + 1 : 1);
+
+	if (WillExecuteInParallel)
+	{
+		// We must reserve to prevent realloc otherwise it will cause memory leak if WillExecuteInParallel == true
+		View.PrimitiveCustomDataMemStack.Reserve(View.PrimitiveCustomDataMemStack.Num() + FMath::TruncToInt((float)NumMesh / (float)FRelevancePrimSet<int32>::MaxInputPrims + 1.0f));
+	}
 
 	{
 		FSceneSetBitIterator BitIt(View.PrimitiveVisibilityMap);
@@ -2532,12 +2537,12 @@ void FSceneRenderer::PreVisibilityFrameSetup(FRHICommandListImmediate& RHICmdLis
 					//     shader does.  The correct fix would be to disable the effect when we don't need it and to properly mark
 					//     the uber-postprocessing effect as the last effect in the chain.
 
-					View.bPrevTransformsReset				= true;
+					View.bPrevTransformsReset = true;
 				}
 				else
 				{
 					View.PrevViewInfo = ViewState->PrevFrameViewInfo;
-						}
+				}
 
 				// we don't use DeltaTime as it can be 0 (in editor) and is computed by subtracting floats (loses precision over time)
 				// Clamp DeltaWorldTime to reasonable values for the purposes of motion blur, things like TimeDilation can make it very small
@@ -2824,13 +2829,15 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 			int32 NumOccludedPrimitivesInView = ViewState->SceneSoftwareOcclusion->Process(RHICmdList, Scene, View);
 			STAT(NumOccludedPrimitives += NumOccludedPrimitivesInView);
 		}
-		
+
 		MarkAllPrimitivesForReflectionProxyUpdate(Scene);
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_ViewVisibilityTime_ConditionalMarkStaticMeshElementsForUpdate);
 			Scene->ConditionalMarkStaticMeshElementsForUpdate();
 		}
 
+		// ISR views can't compute relevance until all views are frustum culled
+		if (!View.IsInstancedStereoPass())
 		{
 			SCOPE_CYCLE_COUNTER(STAT_ViewRelevance);
 			ComputeAndMarkRelevanceForViewParallel(RHICmdList, Scene, View, ViewBit, HasDynamicMeshElementsMasks, HasDynamicEditorMeshElementsMasks, HasViewCustomDataMasks);
@@ -2861,6 +2868,35 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 		// TODO: right now decals visibility computed right before rendering them, ideally it should be done in InitViews and this flag should be replaced with list of visible decals  
 	    // Currently used to disable stencil operations in forward base pass when scene has no any decals
 		View.bSceneHasDecals = (Scene->Decals.Num() > 0);
+	}
+
+	if (Views.Num() > 1 && Views[0].IsInstancedStereoPass())
+	{
+		// Ensure primitives from the right-eye view are visible in the left-eye (instanced) view
+		FSceneBitArray& LeftView = Views[0].PrimitiveVisibilityMap;
+		const FSceneBitArray& RightView = Views[1].PrimitiveVisibilityMap;
+
+		check(LeftView.Num() == RightView.Num())
+
+		const uint32 NumWords = FMath::DivideAndRoundUp(LeftView.Num(), NumBitsPerDWORD);
+		uint32* const LeftData = LeftView.GetData();
+		const uint32* const RightData = RightView.GetData();
+
+		for (uint32 Index = 0; Index < NumWords; ++Index)
+		{
+			LeftData[Index] |= RightData[Index];
+		}
+	}
+
+	ViewBit = 0x1;
+	for (FViewInfo& View : Views)
+	{
+		if (View.IsInstancedStereoPass())
+		{
+			SCOPE_CYCLE_COUNTER(STAT_ViewRelevance);
+			ComputeAndMarkRelevanceForViewParallel(RHICmdList, Scene, View, ViewBit, HasDynamicMeshElementsMasks, HasDynamicEditorMeshElementsMasks, HasViewCustomDataMasks);
+		}
+		ViewBit <<= 1;
 	}
 
 	GatherDynamicMeshElements(Views, Scene, ViewFamily, HasDynamicMeshElementsMasks, HasDynamicEditorMeshElementsMasks, HasViewCustomDataMasks, MeshCollector);

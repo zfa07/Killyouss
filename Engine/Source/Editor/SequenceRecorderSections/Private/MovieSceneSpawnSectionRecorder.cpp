@@ -7,6 +7,7 @@
 #include "Tracks/MovieSceneSpawnTrack.h"
 #include "MovieScene.h"
 #include "SequenceRecorderSettings.h"
+#include "SequenceRecorderUtils.h"
 #include "Channels/MovieSceneChannelProxy.h"
 
 TSharedPtr<IMovieSceneSectionRecorder> FMovieSceneSpawnSectionRecorderFactory::CreateSectionRecorder(const struct FActorRecordingSettings& InActorRecordingSettings) const
@@ -21,9 +22,25 @@ bool FMovieSceneSpawnSectionRecorderFactory::CanRecordObject(UObject* InObjectTo
 
 void FMovieSceneSpawnSectionRecorder::CreateSection(UObject* InObjectToRecord, UMovieScene* MovieScene, const FGuid& Guid, float Time)
 {
+	if (MovieScene->FindPossessable(Guid))
+	{
+		return;
+	}
+
 	ObjectToRecord = InObjectToRecord;
 
-	UMovieSceneSpawnTrack* SpawnTrack = MovieScene->AddTrack<UMovieSceneSpawnTrack>(Guid);
+	UMovieSceneSection* NewMovieSceneSection = nullptr;
+
+	UMovieSceneSpawnTrack* SpawnTrack = MovieScene->FindTrack<UMovieSceneSpawnTrack>(Guid);
+	if (!SpawnTrack)
+	{
+		SpawnTrack = MovieScene->AddTrack<UMovieSceneSpawnTrack>(Guid);
+	}
+	else
+	{
+		SpawnTrack->RemoveAllAnimationData();
+	}
+
 	if(SpawnTrack)
 	{
 		MovieSceneSection = Cast<UMovieSceneBoolSection>(SpawnTrack->CreateNewSection());
@@ -34,25 +51,32 @@ void FMovieSceneSpawnSectionRecorder::CreateSection(UObject* InObjectToRecord, U
 		FMovieSceneBoolChannel* BoolChannel = MovieSceneSection->GetChannelProxy().GetChannel<FMovieSceneBoolChannel>(0);
 		check(BoolChannel);
 		BoolChannel->SetDefault(false);
-		BoolChannel->GetInterface().AddKey(0, false);
+		BoolChannel->GetData().AddKey(0, false);
 
-		FFrameRate FrameResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetFrameResolution();
-		FFrameNumber CurrentFrame = (Time * FrameResolution).FloorToFrame();
+		FFrameRate TickResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+		FFrameNumber CurrentFrame = (Time * TickResolution).FloorToFrame();
 		MovieSceneSection->SetRange(TRange<FFrameNumber>::Inclusive(CurrentFrame, CurrentFrame));
+
+		MovieSceneSection->TimecodeSource = SequenceRecorderUtils::GetTimecodeSource();
 	}
 
 	bWasSpawned = false;
 }
 
-void FMovieSceneSpawnSectionRecorder::FinalizeSection()
+void FMovieSceneSpawnSectionRecorder::FinalizeSection(float CurrentTime)
 {
+	if (!MovieSceneSection.IsValid())
+	{
+		return;
+	}
+
 	const bool bSpawned = ObjectToRecord.IsValid();
 	if(bSpawned != bWasSpawned)
 	{
 		FMovieSceneBoolChannel* Channel = MovieSceneSection->GetChannelProxy().GetChannel<FMovieSceneBoolChannel>(0);
 		if (ensure(Channel) && MovieSceneSection->HasEndFrame())
 		{
-			Channel->GetInterface().AddKey(MovieSceneSection->GetExclusiveEndFrame()-1, bSpawned);
+			Channel->GetData().AddKey(MovieSceneSection->GetExclusiveEndFrame()-1, bSpawned);
 		}
 	}
 
@@ -64,10 +88,10 @@ void FMovieSceneSpawnSectionRecorder::FinalizeSection()
 		{
 			double       OneFrameInterval = 1.0/GetDefault<USequenceRecorderSettings>()->DefaultAnimationSettings.SampleRate;
 
-			FFrameRate   FrameResolution  = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetFrameResolution();
-			FFrameNumber StartTime        = MovieSceneSection->GetExclusiveEndFrame() - (OneFrameInterval * FrameResolution).CeilToFrame();
+			FFrameRate   TickResolution   = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+			FFrameNumber StartTime        = MovieSceneSection->GetExclusiveEndFrame() - (OneFrameInterval * TickResolution).CeilToFrame();
 
-			Channel->GetInterface().AddKey(StartTime, true);
+			Channel->GetData().AddKey(StartTime, true);
 			MovieSceneSection->SetStartFrame(StartTime);
 		}
 	}
@@ -75,10 +99,15 @@ void FMovieSceneSpawnSectionRecorder::FinalizeSection()
 
 void FMovieSceneSpawnSectionRecorder::Record(float CurrentTime)
 {
+	if (!MovieSceneSection.IsValid())
+	{
+		return;
+	}
+
 	if(ObjectToRecord.IsValid())
 	{
-		FFrameRate FrameResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetFrameResolution();
-		MovieSceneSection->ExpandToFrame((CurrentTime * FrameResolution).FloorToFrame());
+		FFrameRate TickResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+		MovieSceneSection->ExpandToFrame((CurrentTime * TickResolution).FloorToFrame());
 	}
 
 	const bool bSpawned = ObjectToRecord.IsValid();
@@ -87,10 +116,10 @@ void FMovieSceneSpawnSectionRecorder::Record(float CurrentTime)
 		FMovieSceneBoolChannel* Channel = MovieSceneSection->GetChannelProxy().GetChannel<FMovieSceneBoolChannel>(0);
 		if (ensure(Channel))
 		{
-			FFrameRate   FrameResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetFrameResolution();
-			FFrameNumber KeyTime         = (CurrentTime * FrameResolution).FloorToFrame();
+			FFrameRate   TickResolution  = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+			FFrameNumber KeyTime         = (CurrentTime * TickResolution).FloorToFrame();
 
-			Channel->GetInterface().UpdateOrAddKey(KeyTime, bSpawned);
+			Channel->GetData().UpdateOrAddKey(KeyTime, bSpawned);
 		}
 	}
 	bWasSpawned = bSpawned;

@@ -41,7 +41,7 @@ void FCameraCutSection::SetSingleTime(double GlobalTime)
 	UMovieSceneCameraCutSection* CameraCutSection = Cast<UMovieSceneCameraCutSection>(Section);
 	if (CameraCutSection && CameraCutSection->HasStartFrame())
 	{
-		double ReferenceOffsetSeconds = CameraCutSection->GetInclusiveStartFrame() / CameraCutSection->GetTypedOuter<UMovieScene>()->GetFrameResolution();
+		double ReferenceOffsetSeconds = CameraCutSection->GetInclusiveStartFrame() / CameraCutSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
 		CameraCutSection->SetThumbnailReferenceOffset(GlobalTime - ReferenceOffsetSeconds);
 	}
 }
@@ -53,7 +53,7 @@ void FCameraCutSection::Tick(const FGeometry& AllottedGeometry, const FGeometry&
 	{
 		if (GetDefault<UMovieSceneUserThumbnailSettings>()->bDrawSingleThumbnails && CameraCutSection->HasStartFrame())
 		{
-			double ReferenceOffsetSeconds = CameraCutSection->GetInclusiveStartFrame() / CameraCutSection->GetTypedOuter<UMovieScene>()->GetFrameResolution() + CameraCutSection->GetThumbnailReferenceOffset();
+			double ReferenceOffsetSeconds = CameraCutSection->GetInclusiveStartFrame() / CameraCutSection->GetTypedOuter<UMovieScene>()->GetTickResolution() + CameraCutSection->GetThumbnailReferenceOffset();
 			ThumbnailCache.SetSingleReferenceFrame(ReferenceOffsetSeconds);
 		}
 		else
@@ -131,12 +131,9 @@ const AActor* FCameraCutSection::GetCameraForFrame(FFrameNumber Time) const
 		FMovieSceneSequenceID SequenceID = Sequencer->GetFocusedTemplateID();
 		if (CameraCutSection->GetCameraBindingID().GetSequenceID().IsValid())
 		{
-			if (const FMovieSceneSubSequenceData* SubData = Sequencer->GetEvaluationTemplate().GetHierarchy().FindSubData(SequenceID))
-			{
-				// Ensure that this ID is resolvable from the root, based on the current local sequence ID
-				FMovieSceneObjectBindingID RootBindingID = CameraCutSection->GetCameraBindingID().ResolveLocalToRoot(SequenceID, Sequencer->GetEvaluationTemplate().GetHierarchy());
-				SequenceID = RootBindingID.GetSequenceID();
-			}
+			// Ensure that this ID is resolvable from the root, based on the current local sequence ID
+			FMovieSceneObjectBindingID RootBindingID = CameraCutSection->GetCameraBindingID().ResolveLocalToRoot(SequenceID, Sequencer->GetEvaluationTemplate().GetHierarchy());
+			SequenceID = RootBindingID.GetSequenceID();
 		}
 
 		for (TWeakObjectPtr<>& Object : Sequencer->FindBoundObjects(CameraCutSection->GetCameraBindingID().GetGuid(), SequenceID))

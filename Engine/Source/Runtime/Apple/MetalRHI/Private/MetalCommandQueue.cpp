@@ -47,6 +47,7 @@ FMetalCommandQueue::FMetalCommandQueue(mtlpp::Device InDevice, uint32 const MaxN
 		Features = EMetalFeaturesSeparateStencil | EMetalFeaturesSetBufferOffset | EMetalFeaturesResourceOptions | EMetalFeaturesDepthStencilBlitOptions | EMetalFeaturesShaderVersions | EMetalFeaturesSetBytes;
 
 #if PLATFORM_TVOS
+        Features &= ~(EMetalFeaturesSetBytes);
 		if(!bNoMetalv2 && [Device supportsFeatureSet:MTLFeatureSet_tvOS_GPUFamily1_v2])
 		{
 			Features |= EMetalFeaturesStencilView | EMetalFeaturesGraphicsUAVs;
@@ -327,7 +328,9 @@ mtlpp::ResourceOptions FMetalCommandQueue::GetCompatibleResourceOptions(mtlpp::R
 
 void FMetalCommandQueue::InsertDebugCaptureBoundary(void)
 {
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	CommandQueue.InsertDebugCaptureBoundary();
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void FMetalCommandQueue::SetRuntimeDebuggingLevel(int32 const Level)

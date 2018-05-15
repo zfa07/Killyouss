@@ -1,6 +1,8 @@
 // Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
 
 #include "Android/AndroidEventManager.h"
+
+#if USE_ANDROID_EVENTS
 #include "Android/AndroidApplication.h"
 #include "AudioDevice.h"
 #include "Misc/CallbackDevice.h"
@@ -73,9 +75,6 @@ void FAppEventManager::Tick()
 				}
 				else
 				{
-				{
-					bCreateWindow = false;
-				}
 					if (GEngine->XRSystem.IsValid() && GEngine->XRSystem->GetHMDDevice() && GEngine->XRSystem->GetHMDDevice()->IsHMDConnected())
 					{
 						// delay the destruction until after the renderer teardown on Gear VR
@@ -612,3 +611,4 @@ void FAppEventManager::WaitForEmptyQueue()
 	}
 }
 
+#endif

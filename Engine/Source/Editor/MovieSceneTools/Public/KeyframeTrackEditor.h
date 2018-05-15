@@ -14,6 +14,8 @@
 #include "MovieSceneTrackEditor.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "MovieSceneCommonHelpers.h"
+#include "Channels/MovieSceneChannelTraits.h"
+#include "Channels/MovieSceneChannel.h"
 #include "Channels/MovieSceneChannelProxy.h"
 
 
@@ -46,9 +48,9 @@ struct FMovieSceneChannelValueSetter
 		virtual ~IImpl(){}
 
 		/* Returns whether a key was created */
-		virtual bool Apply(FMovieSceneChannelProxy& Proxy, FFrameNumber InTime, EMovieSceneKeyInterpolation InterpolationMode, bool bKeyEvenIfUnchanged, bool bKeyEvenIfEmpty) const { return false; }
+		virtual bool Apply(UMovieSceneSection* Section, FMovieSceneChannelProxy& Proxy, FFrameNumber InTime, EMovieSceneKeyInterpolation InterpolationMode, bool bKeyEvenIfUnchanged, bool bKeyEvenIfEmpty) const { return false; }
 
-		virtual void ApplyDefault(FMovieSceneChannelProxy& Proxy) const { }
+		virtual void ApplyDefault(UMovieSceneSection* Section, FMovieSceneChannelProxy& Proxy) const { }
 	};
 
 	IImpl* operator->()
@@ -76,12 +78,16 @@ private:
 			: ChannelIndex(InChannelIndex), ValueToSet(InValue)
 		{}
 
-		virtual void ApplyDefault(FMovieSceneChannelProxy& Proxy) const override
+		virtual void ApplyDefault(UMovieSceneSection* Section, FMovieSceneChannelProxy& Proxy) const override
 		{
 			ChannelType* Channel = Proxy.GetChannel<ChannelType>(ChannelIndex);
-			if (Channel)
+			if (Channel && Channel->GetData().GetTimes().Num() == 0)
 			{
-				Channel->SetDefault(ValueToSet);
+				if (Section->TryModify())
+				{
+					using namespace MovieScene;
+					SetChannelDefault(Channel, ValueToSet);
+				}
 			}
 		}
 	};
@@ -96,7 +102,7 @@ private:
 			: ChannelIndex(InChannelIndex), ValueToSet(InValue)
 		{}
 
-		virtual bool Apply(FMovieSceneChannelProxy& Proxy, FFrameNumber InTime, EMovieSceneKeyInterpolation InterpolationMode, bool bKeyEvenIfUnchanged, bool bKeyEvenIfEmpty) const override
+		virtual bool Apply(UMovieSceneSection* Section, FMovieSceneChannelProxy& Proxy, FFrameNumber InTime, EMovieSceneKeyInterpolation InterpolationMode, bool bKeyEvenIfUnchanged, bool bKeyEvenIfEmpty) const override
 		{
 			bool bKeyCreated = false;
 			using namespace MovieScene;
@@ -112,10 +118,13 @@ private:
 
 				if (bShouldKeyChannel)
 				{
-					if (Channel->GetInterface().GetTimes().Num() != 0 || bKeyEvenIfEmpty)
+					if (Channel->GetNumKeys() != 0 || bKeyEvenIfEmpty)
 					{
-						AddKeyToChannel(Channel, InTime, ValueToSet, InterpolationMode);
-						bKeyCreated = true;
+						if (Section->TryModify())
+						{
+							AddKeyToChannel(Channel, InTime, ValueToSet, InterpolationMode);
+							bKeyCreated = true;
+						}
 					}
 				}
 			}
@@ -123,14 +132,18 @@ private:
 			return bKeyCreated;
 		}
 
-		virtual void ApplyDefault(FMovieSceneChannelProxy& Proxy) const override
+		virtual void ApplyDefault(UMovieSceneSection* Section, FMovieSceneChannelProxy& Proxy) const override
 		{
 			using namespace MovieScene;
 
 			ChannelType* Channel = Proxy.GetChannel<ChannelType>(ChannelIndex);
-			if (Channel)
+			if (Channel && Channel->GetData().GetTimes().Num() == 0)
 			{
-				Channel->SetDefault(ValueToSet);
+				if (Section->TryModify())
+				{
+					using namespace MovieScene;
+					SetChannelDefault(Channel, ValueToSet);
+				}
 			}
 		}
 	};
@@ -235,7 +248,10 @@ private:
 			// Clear all defaults on the section
 			for (const FMovieSceneChannelEntry& Entry : Section->GetChannelProxy().GetAllEntries())
 			{
-				Entry.GetBatchChannelInterface().ClearDefaults_Batch(Entry.GetChannels());
+				for (FMovieSceneChannel* Channel : Entry.GetChannels())
+				{
+					Channel->ClearDefault();
+				}
 			}
 		}
 		GetSequencer()->NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::TrackValueChanged);
@@ -330,10 +346,6 @@ private:
 	FKeyPropertyResult AddKeysToSection(UMovieSceneSection* Section, FFrameNumber KeyTime, const FGeneratedTrackKeys& Keys, ESequencerKeyMode KeyMode)
 	{
 		FKeyPropertyResult KeyPropertyResult;
-		if (!Section->TryModify())
-		{
-			return KeyPropertyResult;
-		}
 
 		EAutoChangeMode AutoChangeMode = GetSequencer()->GetAutoChangeMode();
 
@@ -341,13 +353,14 @@ private:
 			
 		const bool bSetDefaults = GetSequencer()->GetAutoSetTrackDefaults();
 		
-		if ( KeyMode != ESequencerKeyMode::AutoKey || AutoChangeMode == EAutoChangeMode::AutoKey || AutoChangeMode == EAutoChangeMode::All || bSetDefaults)
+		if ( KeyMode != ESequencerKeyMode::AutoKey || AutoChangeMode == EAutoChangeMode::AutoKey || AutoChangeMode == EAutoChangeMode::All)
 		{
 			EMovieSceneKeyInterpolation InterpolationMode = GetSequencer()->GetKeyInterpolation();
 
 			const bool bKeyEvenIfUnchanged =
 				KeyMode == ESequencerKeyMode::ManualKeyForced ||
-				GetSequencer()->GetKeyAllEnabled();
+				GetSequencer()->GetKeyGroupMode() == EKeyGroupMode::KeyAll ||
+				GetSequencer()->GetKeyGroupMode() == EKeyGroupMode::KeyGroup;
 
 			const bool bKeyEvenIfEmpty =
 				(KeyMode == ESequencerKeyMode::AutoKey && AutoChangeMode == EAutoChangeMode::All) ||
@@ -355,15 +368,15 @@ private:
 
 			for (const FMovieSceneChannelValueSetter& GeneratedKey : Keys)
 			{
-				KeyPropertyResult.bKeyCreated |= GeneratedKey->Apply(Proxy, KeyTime, InterpolationMode, bKeyEvenIfUnchanged, bKeyEvenIfEmpty);
+				KeyPropertyResult.bKeyCreated |= GeneratedKey->Apply(Section, Proxy, KeyTime, InterpolationMode, bKeyEvenIfUnchanged, bKeyEvenIfEmpty);
 			}
-
-			if (bSetDefaults)
+		}
+			
+		if (bSetDefaults)
+		{
+			for (const FMovieSceneChannelValueSetter& GeneratedKey : Keys)
 			{
-				for (const FMovieSceneChannelValueSetter& GeneratedKey : Keys)
-				{
-					GeneratedKey->ApplyDefault(Proxy);
-				}
+				GeneratedKey->ApplyDefault(Section, Proxy);
 			}
 		}
 

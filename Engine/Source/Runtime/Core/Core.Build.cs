@@ -78,7 +78,7 @@ public class Core : ModuleRules
 			PublicFrameworks.AddRange(new string[] { "UIKit", "Foundation", "AudioToolbox", "AVFoundation", "GameKit", "StoreKit", "CoreVideo", "CoreMedia", "CoreGraphics", "GameController", "SystemConfiguration" });
 			if (Target.Platform == UnrealTargetPlatform.IOS)
 			{
-				PublicFrameworks.AddRange(new string[] { "CoreMotion", "AdSupport" });
+				PublicFrameworks.AddRange(new string[] { "CoreMotion", "AdSupport", "WebKit" });
                 AddEngineThirdPartyPrivateStaticDependencies(Target,
                     "PLCrashReporter"
                     );
@@ -92,7 +92,7 @@ public class Core : ModuleRules
 				PublicFrameworks.AddRange(new string[] { "iAD" });
 			}
 		}
-		else if (Target.Platform == UnrealTargetPlatform.Android)
+		else if (Target.IsInPlatformGroup(UnrealPlatformGroup.Android))
 		{
 			AddEngineThirdPartyPrivateStaticDependencies(Target,
 				"cxademangle",

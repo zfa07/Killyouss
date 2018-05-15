@@ -37,6 +37,7 @@
 #include "MeshAttributes.h"
 #include "IMeshBuilderModule.h"
 #include "Settings/EditorExperimentalSettings.h"
+#include "UObject/MetaData.h"
 
 #define LOCTEXT_NAMESPACE "FbxStaticMeshImport"
 
@@ -47,7 +48,7 @@ using namespace UnFbx;
 struct ExistingStaticMeshData;
 extern ExistingStaticMeshData* SaveExistingStaticMeshData(UStaticMesh* ExistingMesh, FBXImportOptions* ImportOptions, int32 LodIndex);
 extern void RestoreExistingMeshSettings(struct ExistingStaticMeshData* ExistingMesh, UStaticMesh* NewMesh, int32 LODIndex);
-extern void RestoreExistingMeshData(struct ExistingStaticMeshData* ExistingMeshDataPtr, UStaticMesh* NewMesh, int32 LodLevel, bool bResetMaterialSlots);
+extern void RestoreExistingMeshData(struct ExistingStaticMeshData* ExistingMeshDataPtr, UStaticMesh* NewMesh, int32 LodLevel, bool bCanShowDialog);
 extern void UpdateSomeLodsImportMeshData(UStaticMesh* NewMesh, TArray<int32> *ReimportLodList);
 
 static FbxString GetNodeNameWithoutNamespace( FbxNode* Node )
@@ -1059,7 +1060,9 @@ UStaticMesh* UnFbx::FFbxImporter::ReimportStaticMesh(UStaticMesh* Mesh, UFbxStat
 				const char* FbxMeshPtr = FbxMeshName + FCStringAnsi::Strlen(FbxMeshName) - 1;
 				while (i < FCStringAnsi::Strlen(FbxMeshName))
 				{
-					if (*MeshPtr != *FbxMeshPtr)
+					bool bIsPointAndUnderscore = *FbxMeshPtr == '.' && *MeshPtr == '_';
+					
+					if (*MeshPtr != *FbxMeshPtr && !bIsPointAndUnderscore)
 					{
 						break;
 					}
@@ -1172,7 +1175,7 @@ UStaticMesh* UnFbx::FFbxImporter::ReimportStaticMesh(UStaticMesh* Mesh, UFbxStat
 	if (NewMesh != nullptr)
 	{
 		UpdateSomeLodsImportMeshData(NewMesh, &ReimportLodList);
-		RestoreExistingMeshData(ExistMeshDataPtr, NewMesh, INDEX_NONE, ImportOptions->bResetMaterialSlots);
+		RestoreExistingMeshData(ExistMeshDataPtr, NewMesh, INDEX_NONE, ImportOptions->bCanShowDialog);
 	}
 	return NewMesh;
 }
@@ -1187,6 +1190,103 @@ void UnFbx::FFbxImporter::VerifyGeometry(UStaticMesh* StaticMesh)
 		if (Extents.GetAbsMax() < 5.f)
 		{
 			AddTokenizedErrorMessage(FTokenizedMessage::Create(EMessageSeverity::Warning, LOCTEXT("Prompt_MeshVerySmall", "Warning: The imported mesh is very small. This is most likely an issue with the units used when exporting to FBX.")), FFbxErrors::Generic_Mesh_SmallGeometry);
+		}
+	}
+}
+
+FString GetFbxPropertyStringValue(const FbxProperty& Property)
+{
+	FString ValueStr(TEXT("Unsupported type"));
+
+	FbxDataType DataType = Property.GetPropertyDataType();
+	switch (DataType.GetType())
+	{
+	case eFbxBool:
+		{
+			FbxBool BoolValue = Property.Get<FbxBool>();
+			ValueStr = Lex::ToString(BoolValue);
+		}
+		break;
+	case eFbxInt:
+		{
+			FbxInt IntValue = Property.Get<FbxInt>();
+			ValueStr = Lex::ToString(IntValue);
+		}
+		break;
+	case eFbxEnum:
+		{
+			FbxEnum EnumValue = Property.Get<FbxEnum>();
+			ValueStr = Lex::ToString(EnumValue);
+		}
+		break;
+	case eFbxFloat:
+		{
+			FbxFloat FloatValue = Property.Get<FbxFloat>();
+			ValueStr = Lex::ToString(FloatValue);
+		}
+		break;
+	case eFbxDouble:
+		{
+			FbxDouble DoubleValue = Property.Get<FbxDouble>();
+			ValueStr = Lex::ToString(DoubleValue);
+		}
+		break;
+	case eFbxDouble2:
+		{
+			FbxDouble2 Vec = Property.Get<FbxDouble2>();
+			ValueStr = FString::Printf(TEXT("(%f, %f, %f, %f)"), Vec[0], Vec[1]);
+		}
+		break;
+	case eFbxDouble3:
+		{
+			FbxDouble3 Vec = Property.Get<FbxDouble3>();
+			ValueStr = FString::Printf(TEXT("(%f, %f, %f)"), Vec[0], Vec[1], Vec[2]);
+		}
+		break;
+	case eFbxDouble4:
+		{
+			FbxDouble4 Vec = Property.Get<FbxDouble4>();
+			ValueStr = FString::Printf(TEXT("(%f, %f, %f, %f)"), Vec[0], Vec[1], Vec[2], Vec[3]);
+		}
+		break;
+	case eFbxString:
+		{
+			FbxString StringValue = Property.Get<FbxString>();
+			ValueStr = UTF8_TO_TCHAR(StringValue.Buffer());
+	}
+		break;
+	default:
+		break;
+	}
+	return ValueStr;
+}
+
+void ImportNodeCustomProperties(UObject* Object, FbxNode* Node)
+{
+	if (Object && Node)
+	{
+		// Import all custom user-defined FBX properties from the FBX node to the object metadata
+		FbxProperty CurrentProperty = Node->GetFirstProperty();
+		static const FString MetadataPrefix(FBX_METADATA_PREFIX);
+		while (CurrentProperty.IsValid())
+		{
+			if (CurrentProperty.GetFlag(FbxPropertyFlags::eUserDefined))
+			{
+				// Prefix the FBX metadata tag to make it distinguishable from other metadata
+				// so that it can be exportable through FBX export
+				FString MetadataTag = UTF8_TO_TCHAR(CurrentProperty.GetName());
+				MetadataTag = MetadataPrefix + MetadataTag;
+
+				FString MetadataValue = GetFbxPropertyStringValue(CurrentProperty);
+				Object->GetOutermost()->GetMetaData()->SetValue(Object, *MetadataTag, *MetadataValue);
+			}
+			CurrentProperty = Node->GetNextProperty(CurrentProperty);
+		}
+
+		int NumChildren = Node->GetChildCount();
+		for (int i = 0; i < NumChildren; ++i)
+		{
+			ImportNodeCustomProperties(Object, Node->GetChild(i));
 		}
 	}
 }
@@ -1575,10 +1675,12 @@ UStaticMesh* UnFbx::FFbxImporter::ImportStaticMeshAsSingle(UObject* InParent, TA
 
 	if (StaticMesh)
 	{
-		//warnings based on geometry
-		VerifyGeometry(StaticMesh);
-
 		ImportStaticMeshLocalSockets(StaticMesh, MeshNodeArray);
+
+		for (FbxNode* Node : MeshNodeArray)
+		{
+			ImportNodeCustomProperties(StaticMesh, Node);
+		}
 	}
 
 	return StaticMesh;
@@ -1756,10 +1858,6 @@ void UnFbx::FFbxImporter::PostImportStaticMesh(UStaticMesh* StaticMesh, TArray<F
 	{
 		//Generate a random GUID to be sure it rebuild the asset
 		StaticMesh->BuildCacheAutomationTestGuid = FGuid::NewGuid();
-	}
-
-	if (GIsAutomationTesting)
-	{
 		//Avoid distance field calculation in automation test setting this to false is not suffisant since the condition OR with the CVar
 		//But fbx automation test turn off the CVAR
 		StaticMesh->bGenerateMeshDistanceField = false;
@@ -1776,6 +1874,8 @@ void UnFbx::FFbxImporter::PostImportStaticMesh(UStaticMesh* StaticMesh, TArray<F
 	{
 		MeshDescription->TriangulateMesh();
 	}
+	//Make sure the light map UVChannel is valid
+	StaticMesh->EnforceLightmapRestrictions();
 
 	//Prebuild the static mesh when we use LodGroup and we want to modify the LodNumber
 	if (!ImportOptions->bImportScene)

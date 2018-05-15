@@ -43,7 +43,7 @@ public:
 	bool bEnableFavoriteSystem;
 
 
-	/** Device output log window (currently implemented for Android only)*/
+	/** Device output log window (currently implemented for Android & Switch only)*/
 	UPROPERTY(EditAnywhere, config, Category = Tools, meta = (DisplayName = "Device Output Log"))
 	bool bDeviceOutputLog;
 
@@ -62,10 +62,6 @@ public:
 	/** Enables "Find and Replace All" tool in the MyBlueprint window for variables */
 	UPROPERTY(EditAnywhere, config, Category = Blueprints, meta = (DisplayName = "Find and Replace All References Tool"))
 	bool bEnableFindAndReplaceReferences;
-
-	/** Bookmarks facilitate quick-jump navigation to saved locations in any Blueprint Graph context in the Blueprint Editor. */
-	UPROPERTY(EditAnywhere, config, Category = Blueprints)
-	bool bEnableBlueprintGraphBookmarks;
 
 	/** Should arrows indicating data/execution flow be drawn halfway along wires? */
 	UPROPERTY(/*EditAnywhere - deprecated (moved into UBlueprintEditorSettings), */config/*, Category=Blueprints, meta=(DisplayName="Draw midpoint arrows in Blueprints")*/)

@@ -61,6 +61,10 @@
 #include "IPIEPreviewDeviceModule.h"
 #endif
 
+#if !UE_SERVER
+	#include "IMediaModule.h"
+#endif
+
 CSV_DECLARE_CATEGORY_MODULE_EXTERN(CORE_API, Basic);
 
 ENGINE_API bool GDisallowNetworkTravel = false;
@@ -619,7 +623,7 @@ UEngine::UEngine(const FObjectInitializer& ObjectInitializer)
 
 	bUseSound = true;
 
-	bHardwareSurveyEnabled_DEPRECATED = true;
+	bHardwareSurveyEnabled_DEPRECATED = false;
 	bIsInitialized = false;
 
 	BeginStreamingPauseDelegate = NULL;
@@ -650,6 +654,8 @@ UEngine::UEngine(const FObjectInitializer& ObjectInitializer)
 		}
 	}
 	#endif
+
+	DefaultTimecodeFrameRate = FFrameRate(30, 1);
 }
 
 void UGameEngine::Init(IEngineLoop* InEngineLoop)
@@ -1095,20 +1101,10 @@ float UGameEngine::GetMaxTickRate(float DeltaTime, bool bAllowFrameRateSmoothing
 {
 	float MaxTickRate = 0.f;
 
-	if (FPlatformProperties::SupportsWindowedMode() == false && !IsRunningDedicatedServer())
+	if (FPlatformProperties::SupportsWindowedMode() || IsRunningDedicatedServer())
 	{
-		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.VSync"));
-		// Limit framerate on console if VSYNC is enabled to avoid jumps from 30 to 60 and back.
-		if( CVar->GetValueOnGameThread() != 0 )
-		{
-			if (SmoothedFrameRateRange.HasUpperBound())
-			{
-				MaxTickRate = SmoothedFrameRateRange.GetUpperBoundValue();
-			}
-		}
-	}
-	else 
-	{
+		// This applies for "non-console" platforms...
+
 		UWorld* World = NULL;
 
 		for (int32 WorldIndex = 0; WorldIndex < WorldList.Num(); ++WorldIndex)
@@ -1341,6 +1337,17 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_UGameEngine_Tick_GetWorldContextFromHandleChecked);
 		GWorld = GetWorldContextFromHandleChecked(OriginalGWorldContext).World();
 	}
+
+#if !UE_SERVER
+	// tick media framework
+	static const FName MediaModuleName(TEXT("Media"));
+	IMediaModule* MediaModule = FModuleManager::LoadModulePtr<IMediaModule>(MediaModuleName);
+
+	if (MediaModule != nullptr)
+	{
+		MediaModule->TickPostEngine();
+	}
+#endif
 
 	// Tick the viewport
 	if ( GameViewport != NULL && !bIdleMode )

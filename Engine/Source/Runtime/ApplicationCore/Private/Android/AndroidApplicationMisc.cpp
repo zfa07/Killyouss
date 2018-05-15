@@ -29,18 +29,20 @@ GenericApplication* FAndroidApplicationMisc::CreateApplication()
 	return FAndroidApplication::CreateAndroidApplication();
 }
 
-extern void AndroidThunkCpp_Minimize();
-
 void FAndroidApplicationMisc::RequestMinimize()
 {
+#if USE_ANDROID_JNI
+	extern void AndroidThunkCpp_Minimize();
 	AndroidThunkCpp_Minimize();
+#endif
 }
 
 
-extern void AndroidThunkCpp_KeepScreenOn(bool Enable);
 
 bool FAndroidApplicationMisc::ControlScreensaver(EScreenSaverAction Action)
 {
+#if USE_ANDROID_JNI
+	extern void AndroidThunkCpp_KeepScreenOn(bool Enable);
 	switch (Action)
 	{
 		case EScreenSaverAction::Disable:
@@ -54,6 +56,9 @@ bool FAndroidApplicationMisc::ControlScreensaver(EScreenSaverAction Action)
 			break;
 	}
 	return true;
+#else
+	return false;
+#endif
 }
 
 void FAndroidApplicationMisc::ResetGamepadAssignments()
@@ -71,15 +76,20 @@ bool FAndroidApplicationMisc::IsControllerAssignedToGamepad(int32 ControllerId)
 	return FAndroidInputInterface::IsControllerAssignedToGamepad(ControllerId);
 }
 
+extern void AndroidThunkCpp_ClipboardCopy(const FString& Str);
 void FAndroidApplicationMisc::ClipboardCopy(const TCHAR* Str)
 {
-	//@todo Android
+#if USE_ANDROID_JNI
+	AndroidThunkCpp_ClipboardCopy(Str);
+#endif
 }
 
+extern FString AndroidThunkCpp_ClipboardPaste();
 void FAndroidApplicationMisc::ClipboardPaste(class FString& Result)
 {
-	Result = TEXT("");
-	//@todo Android
+#if USE_ANDROID_JNI
+	Result = AndroidThunkCpp_ClipboardPaste();
+#endif
 }
 
 struct FScreenDensity
@@ -141,8 +151,6 @@ static float GetWindowUpscaleFactor()
 	return CalculatedScaleFactor;
 }
 
-extern FString AndroidThunkCpp_GetMetaDataString(const FString& Key);
-
 EScreenPhysicalAccuracy FAndroidApplicationMisc::ComputePhysicalScreenDensity(int32& OutScreenDensity)
 {
 	FString MyDeviceModel = FPlatformMisc::GetDeviceModel();
@@ -169,6 +177,8 @@ EScreenPhysicalAccuracy FAndroidApplicationMisc::ComputePhysicalScreenDensity(in
 		}
 	}
 
+#if USE_ANDROID_JNI
+	extern FString AndroidThunkCpp_GetMetaDataString(const FString& Key);
 	FString DPIStrings = AndroidThunkCpp_GetMetaDataString(TEXT("ue4.displaymetrics.dpi"));
 	TArray<FString> DPIValues;
 	DPIStrings.ParseIntoArray(DPIValues, TEXT(","));
@@ -186,4 +196,8 @@ EScreenPhysicalAccuracy FAndroidApplicationMisc::ComputePhysicalScreenDensity(in
 
 	OutScreenDensity *= GetWindowUpscaleFactor();
 	return EScreenPhysicalAccuracy::Approximation;
+#else
+	// @todo Lumin: implement this on Lumin probably
+	return EScreenPhysicalAccuracy::Unknown;
+#endif
 }

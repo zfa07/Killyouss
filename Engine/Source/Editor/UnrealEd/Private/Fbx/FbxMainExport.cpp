@@ -95,6 +95,7 @@
 #include "Widgets/SWindow.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Interfaces/IMainFrameModule.h"
+#include "UObject/MetaData.h"
 
 namespace UnFbx
 {
@@ -1486,20 +1487,20 @@ FFbxExporter::FLevelSequenceAnimTrackAdapter::FLevelSequenceAnimTrackAdapter( IM
 
 float FFbxExporter::FLevelSequenceAnimTrackAdapter::GetAnimationStart() const
 {
-	return MovieScene->GetPlaybackRange().GetLowerBoundValue() / MovieScene->GetFrameResolution();
+	return MovieScene->GetPlaybackRange().GetLowerBoundValue() / MovieScene->GetTickResolution();
 }
 
 float FFbxExporter::FLevelSequenceAnimTrackAdapter::GetAnimationLength() const
 {
-	return FFrameNumber(MovieScene::DiscreteSize(MovieScene->GetPlaybackRange())) / MovieScene->GetFrameResolution();
+	return FFrameNumber(MovieScene::DiscreteSize(MovieScene->GetPlaybackRange())) / MovieScene->GetTickResolution();
 }
 
 
 void FFbxExporter::FLevelSequenceAnimTrackAdapter::UpdateAnimation( float Time )
 {
 	// Convert the time in seconds to a frame time
-	FFrameTime FrameTime = Time * MovieScene->GetFrameResolution();
-	FMovieSceneContext Context = FMovieSceneContext(FMovieSceneEvaluationRange(FrameTime, MovieScene->GetFrameResolution()), MovieScenePlayer->GetPlaybackStatus()).SetHasJumped(true);
+	FFrameTime FrameTime = Time * MovieScene->GetTickResolution();
+	FMovieSceneContext Context = FMovieSceneContext(FMovieSceneEvaluationRange(FrameTime, MovieScene->GetTickResolution()), MovieScenePlayer->GetPlaybackStatus()).SetHasJumped(true);
 	MovieScenePlayer->GetEvaluationTemplate().Evaluate( Context, *MovieScenePlayer );
 }
 
@@ -2328,7 +2329,7 @@ void RichCurveInterpolationToFbxInterpolation(ERichCurveInterpMode InInterpolati
 	}
 }
 
-void FFbxExporter::ExportChannelToFbxCurve(FbxAnimCurve& InFbxCurve, const FMovieSceneFloatChannel& InChannel, FFrameRate FrameResolution, ERichCurveValueMode ValueMode, bool bNegative)
+void FFbxExporter::ExportChannelToFbxCurve(FbxAnimCurve& InFbxCurve, const FMovieSceneFloatChannel& InChannel, FFrameRate TickResolution, ERichCurveValueMode ValueMode, bool bNegative)
 {
 	const float NegateFactor = bNegative ? -1.f : 1.f;
 
@@ -2346,7 +2347,7 @@ void FFbxExporter::ExportChannelToFbxCurve(FbxAnimCurve& InFbxCurve, const FMovi
 
 		FbxTime FbxTime;
 		FbxAnimCurveKey FbxKey;
-		FbxTime.SetSecondDouble(KeyTime / FrameResolution);
+		FbxTime.SetSecondDouble(KeyTime / TickResolution);
 
 		int FbxKeyIndex = InFbxCurve.KeyAdd(FbxTime);
 
@@ -2359,8 +2360,8 @@ void FFbxExporter::ExportChannelToFbxCurve(FbxAnimCurve& InFbxCurve, const FMovi
 		{
 			if (Index < Times.Num() - 1)
 			{
-				float LeaveTangent = KeyValue.Tangent.LeaveTangent;
-				float NextArriveTangent = Values[Index+1].Tangent.ArriveTangent;
+				float LeaveTangent = KeyValue.Tangent.LeaveTangent * TickResolution.AsDecimal();
+				float NextArriveTangent = Values[Index+1].Tangent.ArriveTangent * TickResolution.AsDecimal();
 
 				if (bNegative)
 				{
@@ -2401,7 +2402,7 @@ void FFbxExporter::ExportLevelSequence3DTransformTrack( FbxNode& FbxActor, UMovi
 		return;
 	}
 
-	FFrameRate FrameResolution = TransformTrack.GetTypedOuter<UMovieScene>()->GetFrameResolution();
+	FFrameRate TickResolution = TransformTrack.GetTypedOuter<UMovieScene>()->GetTickResolution();
 
 	FbxAnimCurveNode* TranslationNode = FbxActor.LclTranslation.GetCurveNode( BaseLayer, true );
 	FbxAnimCurveNode* RotationNode = FbxActor.LclRotation.GetCurveNode( BaseLayer, true );
@@ -2422,24 +2423,24 @@ void FFbxExporter::ExportLevelSequence3DTransformTrack( FbxNode& FbxActor, UMovi
 	TArrayView<FMovieSceneFloatChannel*> FloatChannels = TransformSection->GetChannelProxy().GetChannels<FMovieSceneFloatChannel>();
 
 	// Translation
-	ExportChannelToFbxCurve(*FbxCurveTransX, *FloatChannels[0], FrameResolution, ERichCurveValueMode::Default, false);
-	ExportChannelToFbxCurve(*FbxCurveTransY, *FloatChannels[1], FrameResolution, ERichCurveValueMode::Default, true);
-	ExportChannelToFbxCurve(*FbxCurveTransZ, *FloatChannels[2], FrameResolution, ERichCurveValueMode::Default, false);
+	ExportChannelToFbxCurve(*FbxCurveTransX, *FloatChannels[0], TickResolution, ERichCurveValueMode::Default, false);
+	ExportChannelToFbxCurve(*FbxCurveTransY, *FloatChannels[1], TickResolution, ERichCurveValueMode::Default, true);
+	ExportChannelToFbxCurve(*FbxCurveTransZ, *FloatChannels[2], TickResolution, ERichCurveValueMode::Default, false);
 
 	// Scale - don't generate scale keys for cameras
 	if (!bIsCameraActor)
 	{
-		ExportChannelToFbxCurve(*FbxCurveScaleX, *FloatChannels[3], FrameResolution, ERichCurveValueMode::Default, false);
-		ExportChannelToFbxCurve(*FbxCurveScaleY, *FloatChannels[4], FrameResolution, ERichCurveValueMode::Default, false);
-		ExportChannelToFbxCurve(*FbxCurveScaleZ, *FloatChannels[5], FrameResolution, ERichCurveValueMode::Default, false);
+		ExportChannelToFbxCurve(*FbxCurveScaleX, *FloatChannels[6], TickResolution, ERichCurveValueMode::Default, false);
+		ExportChannelToFbxCurve(*FbxCurveScaleY, *FloatChannels[7], TickResolution, ERichCurveValueMode::Default, false);
+		ExportChannelToFbxCurve(*FbxCurveScaleZ, *FloatChannels[8], TickResolution, ERichCurveValueMode::Default, false);
 	}
 
 	// Rotation - bake rotation for cameras and lights
 	if (!bBakeRotations)
 	{
-		ExportChannelToFbxCurve(*FbxCurveRotX, *FloatChannels[6], FrameResolution, ERichCurveValueMode::Default, false);
-		ExportChannelToFbxCurve(*FbxCurveRotY, *FloatChannels[7], FrameResolution, ERichCurveValueMode::Default, true);
-		ExportChannelToFbxCurve(*FbxCurveRotZ, *FloatChannels[8], FrameResolution, ERichCurveValueMode::Default, true);
+		ExportChannelToFbxCurve(*FbxCurveRotX, *FloatChannels[3], TickResolution, ERichCurveValueMode::Default, false);
+		ExportChannelToFbxCurve(*FbxCurveRotY, *FloatChannels[4], TickResolution, ERichCurveValueMode::Default, true);
+		ExportChannelToFbxCurve(*FbxCurveRotZ, *FloatChannels[5], TickResolution, ERichCurveValueMode::Default, true);
 	}
 	else
 	{
@@ -2460,12 +2461,12 @@ void FFbxExporter::ExportLevelSequence3DTransformTrack( FbxNode& FbxActor, UMovi
 		FbxCurveRotZ->KeyModifyBegin();
 
 		FFrameNumber PlayStart      = MovieScene::DiscreteInclusiveLower(InPlaybackRange);
-		double       PlayDuration   = FFrameTime(MovieScene::DiscreteSize(InPlaybackRange)) / FrameResolution;
+		double       PlayDuration   = FFrameTime(MovieScene::DiscreteSize(InPlaybackRange)) / TickResolution;
 		int32        NumKeys        = PlayDuration * BakeTransformsFPS;
 
 		for ( int KeyIndex = 0; KeyIndex < NumKeys; KeyIndex++ )
 		{
-			FFrameTime RelativeKeyTime = ( KeyIndex * PlayDuration / NumKeys ) * FrameResolution;
+			FFrameTime RelativeKeyTime = ( KeyIndex * PlayDuration / NumKeys ) * TickResolution;
 			FFrameTime KeyTime         = RelativeKeyTime + PlayStart;
 
 			FVector Trans = FVector::ZeroVector;
@@ -2495,7 +2496,7 @@ void FFbxExporter::ExportLevelSequence3DTransformTrack( FbxNode& FbxActor, UMovi
 			FbxVector4 KeyScale = Converter.ConvertToFbxScale(RelativeTransform.GetScale3D());
 
 			FbxTime FbxTime;
-			FbxTime.SetSecondDouble(KeyTime / FrameResolution);
+			FbxTime.SetSecondDouble(KeyTime / TickResolution);
 
 			FbxCurveRotX->KeySet(FbxCurveRotX->KeyAdd(FbxTime), FbxTime, KeyRot[0]);
 			FbxCurveRotY->KeySet(FbxCurveRotY->KeyAdd(FbxTime), FbxTime, KeyRot[1]);
@@ -2579,8 +2580,8 @@ void FFbxExporter::ExportLevelSequenceFloatTrack( FbxNode& FbxActor, UMovieScene
 	CurveNode->SetChannelValue<double>( 0U, FloatChannel->GetDefault().Get(MAX_flt) );
 	CurveNode->ConnectToChannel( AnimCurve, 0U );
 
-	FFrameRate FrameResolution = FloatTrack.GetTypedOuter<UMovieScene>()->GetFrameResolution();
-	ExportChannelToFbxCurve(*AnimCurve, *FloatChannel, FrameResolution, IsFoV ? ERichCurveValueMode::Fov : ERichCurveValueMode::Default);
+	FFrameRate TickResolution = FloatTrack.GetTypedOuter<UMovieScene>()->GetTickResolution();
+	ExportChannelToFbxCurve(*AnimCurve, *FloatChannel, TickResolution, IsFoV ? ERichCurveValueMode::Fov : ERichCurveValueMode::Default);
 }
 		
 /**
@@ -3366,6 +3367,33 @@ FbxNode* FFbxExporter::ExportCollisionMesh(const UStaticMesh* StaticMesh, const 
 }
 #endif
 
+void ExportObjectMetadata(const UObject* ObjectToExport, FbxNode* Node)
+{
+	if (ObjectToExport && Node)
+	{
+		// Retrieve the metadata map without creating it
+		const TMap<FName, FString>* MetadataMap = UMetaData::GetMapForObject(ObjectToExport);
+		if (MetadataMap)
+		{
+			static const FString MetadataPrefix(FBX_METADATA_PREFIX);
+			for (const auto& MetadataIt : *MetadataMap)
+			{
+				// Export object metadata tags that are prefixed as FBX custom user-defined properties
+				// Remove the prefix since it's for Unreal use only (and '.' is considered an invalid character for user property names in DCC like Maya)
+				FString TagAsString = MetadataIt.Key.ToString();
+				if (TagAsString.RemoveFromStart(MetadataPrefix))
+				{
+					FbxProperty Property = FbxProperty::Create(Node, FbxStringDT, TCHAR_TO_UTF8(*TagAsString));
+					FbxString ValueString(TCHAR_TO_UTF8(*MetadataIt.Value));
+
+					Property.Set(ValueString);
+					Property.ModifyFlag(FbxPropertyFlags::eUserDefined, true);
+				}
+			}
+		}
+	}
+}
+
 /**
  * Exports a static mesh
  * @param StaticMesh	The static mesh to export
@@ -3405,21 +3433,8 @@ FbxNode* FFbxExporter::ExportStaticMeshToFbx(const UStaticMesh* StaticMesh, int3
 		TArray<int32> VertRemap;
 		TArray<int32> UniqueVerts;
 
-		if (GetExportOptions()->WeldedVertices)
-		{
-			// Weld verts
-			DetermineVertsToWeld(VertRemap, UniqueVerts, RenderMesh);
-		}
-		else
-		{
-			// Do not weld verts
-			VertRemap.AddUninitialized(RenderMesh.VertexBuffers.StaticMeshVertexBuffer.GetNumVertices());
-			for (int32 i = 0; i < VertRemap.Num(); i++)
-			{
-				VertRemap[i] = i;
-			}
-			UniqueVerts = VertRemap;
-		}
+		// Weld verts
+		DetermineVertsToWeld(VertRemap, UniqueVerts, RenderMesh);
 
 		// Create and fill in the vertex position data source.
 		// The position vertices are duplicated, for some reason, retrieve only the first half vertices.
@@ -3549,17 +3564,8 @@ FbxNode* FFbxExporter::ExportStaticMeshToFbx(const UStaticMesh* StaticMesh, int3
 
 			TArray<int32> UvsRemap;
 			TArray<int32> UniqueUVs;
-			if (GetExportOptions()->WeldedVertices)
-			{
-				// Weld UVs
-				DetermineUVsToWeld(UvsRemap, UniqueUVs, RenderMesh.VertexBuffers.StaticMeshVertexBuffer, TexCoordSourceIndex);
-			}
-			else
-			{
-				// Do not weld UVs
-				UvsRemap = VertRemap;
-				UniqueUVs = UvsRemap;
-			}
+			// Weld UVs
+			DetermineUVsToWeld(UvsRemap, UniqueUVs, RenderMesh.VertexBuffers.StaticMeshVertexBuffer, TexCoordSourceIndex);
 
 			// Create the texture coordinate data source.
 			for (int32 FbxVertIndex = 0; FbxVertIndex < UniqueUVs.Num(); FbxVertIndex++)
@@ -3727,6 +3733,8 @@ FbxNode* FFbxExporter::ExportStaticMeshToFbx(const UStaticMesh* StaticMesh, int3
 	//Set the original meshes in case it was already existing
 	FbxActor->SetNodeAttribute(Mesh);
 
+	ExportObjectMetadata(StaticMesh, FbxActor);
+
 	return FbxActor;
 }
 
@@ -3753,21 +3761,8 @@ void FFbxExporter::ExportSplineMeshToFbx(const USplineMeshComponent* SplineMeshC
 	TArray<int32> VertRemap;
 	TArray<int32> UniqueVerts;
 
-	if (GetExportOptions()->WeldedVertices)
-	{
-		// Weld verts
-		DetermineVertsToWeld(VertRemap, UniqueVerts, RenderMesh);
-	}
-	else
-	{
-		// Do not weld verts
-		VertRemap.AddUninitialized(RenderMesh.VertexBuffers.StaticMeshVertexBuffer.GetNumVertices());
-		for (int32 i = 0; i < VertRemap.Num(); i++)
-		{
-			VertRemap[i] = i;
-		}
-		UniqueVerts = VertRemap;
-	}
+	// Weld verts
+	DetermineVertsToWeld(VertRemap, UniqueVerts, RenderMesh);
 
 	FbxMesh* Mesh = FbxMesh::Create(Scene, TCHAR_TO_UTF8(MeshName));
 
@@ -3873,17 +3868,8 @@ void FFbxExporter::ExportSplineMeshToFbx(const USplineMeshComponent* SplineMeshC
 
 		TArray<int32> UvsRemap;
 		TArray<int32> UniqueUVs;
-		if (GetExportOptions()->WeldedVertices)
-		{
-			// Weld UVs
-			DetermineUVsToWeld(UvsRemap, UniqueUVs, RenderMesh.VertexBuffers.StaticMeshVertexBuffer, TexCoordSourceIndex);
-		}
-		else
-		{
-			// Do not weld UVs
-			UvsRemap = VertRemap;
-			UniqueUVs = UvsRemap;
-		}
+		// Weld UVs
+		DetermineUVsToWeld(UvsRemap, UniqueUVs, RenderMesh.VertexBuffers.StaticMeshVertexBuffer, TexCoordSourceIndex);
 
 		// Create the texture coordinate data source.
 		for (int32 UnrealVertIndex : UniqueUVs)

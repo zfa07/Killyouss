@@ -2,13 +2,13 @@
 
 #include "FrameNumberDetailsCustomization.h"
 #include "IDetailPropertyRow.h"
-#include "FrameNumber.h"
+#include "Misc/FrameNumber.h"
 #include "IDetailChildrenBuilder.h"
 #include "DetailLayoutBuilder.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "PropertyCustomizationHelpers.h"
-#include "FrameRate.h"
+#include "Misc/FrameRate.h"
 
 #define LOCTEXT_NAMESPACE "TimeManagement.FrameNumber"
 
@@ -76,10 +76,10 @@ void FFrameNumberDetailsCustomization::OnTimeTextCommitted(const FText& InText, 
 {
 	int32 ExistingValue = 0.0;
 	FrameNumberProperty->GetValue(ExistingValue);
-	TOptional<double> FrameResolution = NumericTypeInterface->FromString(InText.ToString(), ExistingValue);
-	if (FrameResolution.IsSet())
+	TOptional<double> TickResolution = NumericTypeInterface->FromString(InText.ToString(), ExistingValue);
+	if (TickResolution.IsSet())
 	{
-		double ClampedValue = FMath::Clamp(FrameResolution.GetValue(), (double)UIClampMin, (double)UIClampMax);
+		double ClampedValue = FMath::Clamp(TickResolution.GetValue(), (double)UIClampMin, (double)UIClampMax);
 		FrameNumberProperty->SetValue((int32)ClampedValue);
 	}
 }

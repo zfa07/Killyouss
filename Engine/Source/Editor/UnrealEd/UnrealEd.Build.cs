@@ -62,6 +62,7 @@ public class UnrealEd : ModuleRules
 				"PhysicsAssetEditor",
 				"ClothingSystemEditorInterface",
 				"NavigationSystem",
+				"Media",
 			}
 		);
 
@@ -160,7 +161,8 @@ public class UnrealEd : ModuleRules
 				"ClothingSystemRuntime",
 				"ClothingSystemRuntimeInterface",
 				"PIEPreviewDeviceProfileSelector",
-            }
+				"TimeManagement",
+			}
 		);
 
 		DynamicallyLoadedModuleNames.AddRange(
@@ -221,6 +223,7 @@ public class UnrealEd : ModuleRules
 				"OverlayEditor",
 				"AnimationModifiers",
 				"ClothPainter",
+				"Media",
 			}
 		);
 
@@ -232,6 +235,7 @@ public class UnrealEd : ModuleRules
 		if (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Mac || Target.Platform == UnrealTargetPlatform.Linux)
 		{
 			DynamicallyLoadedModuleNames.Add("AndroidPlatformEditor");
+			DynamicallyLoadedModuleNames.Add("LuminPlatformEditor");
 		}
         
         CircularlyReferencedDependentModules.AddRange(

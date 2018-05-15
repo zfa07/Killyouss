@@ -56,6 +56,7 @@ enum EGameUserSettingsVersion
 UGameUserSettings::UGameUserSettings(const FObjectInitializer& ObjectInitializer)
 :	Super(ObjectInitializer)
 {
+	// this will only call the base version of SetToDefaults but some constructors may rely on it being set
 	SetToDefaults();
 }
 
@@ -519,7 +520,6 @@ void UGameUserSettings::ApplySettings(bool bCheckForCommandLineOverrides)
 	ApplyNonResolutionSettings();
 
 	SaveSettings();
-	UE_LOG(LogConsoleResponse, Display, TEXT(""));
 }
 
 void UGameUserSettings::LoadSettings( bool bForceReload/*=false*/ )

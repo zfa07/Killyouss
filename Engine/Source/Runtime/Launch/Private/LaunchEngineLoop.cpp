@@ -373,7 +373,6 @@ static void RHIExitAndStopRHIThread()
 #if HAS_GPU_STATS
 	FRealtimeGPUProfiler::Get()->Release();
 #endif
-
 	// Stop the RHI Thread (using GRHIThread_InternalUseOnly is unreliable since RT may be stopped)
 	if (FTaskGraphInterface::IsRunning() && FTaskGraphInterface::Get().IsThreadProcessingTasks(ENamedThreads::RHIThread))
 	{
@@ -2815,9 +2814,6 @@ int32 FEngineLoop::Init()
 		FViewport::SetGameRenderingEnabled(true, 3);
 	}
 
-	// Begin the async platform hardware survey
-	GEngine->StartHardwareSurvey();
-
 	FCoreDelegates::StarvedGameLoop.BindStatic(&GameLoopIsStarved);
 
 	// Ready to measure thread heartbeat
@@ -2897,7 +2893,7 @@ void FEngineLoop::Exit()
 #endif // WITH_EDITOR
 	FModuleManager::Get().UnloadModule("AssetRegistry", true);
 
-#if !PLATFORM_ANDROID 	// AppPreExit doesn't work on Android
+#if !PLATFORM_ANDROID || PLATFORM_LUMIN 	// AppPreExit doesn't work on Android
 	AppPreExit();
 
 	TermGamePhys();
@@ -2924,7 +2920,7 @@ void FEngineLoop::Exit()
 	// Tear down the RHI.
 	RHIExitAndStopRHIThread();
 
-#if !PLATFORM_ANDROID // UnloadModules doesn't work on Android
+#if !PLATFORM_ANDROID || PLATFORM_LUMIN // UnloadModules doesn't work on Android
 #if WITH_ENGINE
 	// Save the hot reload state
 	IHotReloadInterface* HotReload = IHotReloadInterface::GetPtr();
@@ -3253,6 +3249,9 @@ void FEngineLoop::Tick()
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_TickFPSChart);
 			GEngine->TickPerformanceMonitoring( FApp::GetDeltaTime() );
+
+			extern COREUOBJECT_API void ResetAsyncLoadingStats();
+			ResetAsyncLoadingStats();
 		}
 
 		// update memory allocator stats
@@ -3350,7 +3349,6 @@ void FEngineLoop::Tick()
 
 		if (MediaModule != nullptr)
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_MediaTickPreEngine);
 			MediaModule->TickPreEngine();
 		}
 #endif
@@ -3358,21 +3356,12 @@ void FEngineLoop::Tick()
 		// main game engine tick (world, game objects, etc.)
 		GEngine->Tick(FApp::GetDeltaTime(), bIdleMode);
 
-#if !UE_SERVER
-		// tick media framework
-		if (MediaModule != nullptr)
-		{
-			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_MediaTickPostEngine);
-			MediaModule->TickPostEngine();
-		}
-#endif
-		
 		// If a movie that is blocking the game thread has been playing,
 		// wait for it to finish before we continue to tick or tick again
 		// We do this right after GEngine->Tick() because that is where user code would initiate a load / movie.
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_WaitForMovieToFinish);
-			GetMoviePlayer()->WaitForMovieToFinish();
+			GetMoviePlayer()->WaitForMovieToFinish(true);
 		}
 
 		if (GShaderCompilingManager)
@@ -3392,7 +3381,6 @@ void FEngineLoop::Tick()
 		// tick media framework
 		if (MediaModule != nullptr)
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(STAT_FEngineLoop_MediaTickPreSlate);
 			MediaModule->TickPreSlate();
 		}
 #endif

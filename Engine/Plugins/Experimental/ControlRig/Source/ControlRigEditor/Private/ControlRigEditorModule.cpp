@@ -278,15 +278,12 @@ void FControlRigEditorModule::StartupModule()
 	RefreshAllNodesDelegateHandle = FBlueprintEditorUtils::OnRefreshAllNodesEvent.AddStatic(&FControlRigBlueprintUtils::HandleRefreshAllNodes);
 	RenameVariableReferencesDelegateHandle = FBlueprintEditorUtils::OnRenameVariableReferencesEvent.AddStatic(&FControlRigBlueprintUtils::HandleRenameVariableReferencesEvent);
 
-	GetClassPropertyActionsDelegateHandle = FBlueprintEditorUtils::OnGetClassPropertyActionsEvent.AddStatic(&FControlRigBlueprintUtils::HandleGetClassPropertyActions);
-
 	// register rig unit base editor class
 	RegisterRigUnitEditorClass("RigUnit_TwoBoneIKFK", URigUnitEditor_TwoBoneIKFK::StaticClass());
 }
 
 void FControlRigEditorModule::ShutdownModule()
 {
-	FBlueprintEditorUtils::OnGetClassPropertyActionsEvent.Remove(GetClassPropertyActionsDelegateHandle);
 	FBlueprintEditorUtils::OnRefreshAllNodesEvent.Remove(RefreshAllNodesDelegateHandle);
 	FBlueprintEditorUtils::OnReconstructAllNodesEvent.Remove(ReconstructAllNodesDelegateHandle);
 	FBlueprintEditorUtils::OnRenameVariableReferencesEvent.Remove(RenameVariableReferencesDelegateHandle);
@@ -535,8 +532,8 @@ void FControlRigEditorModule::OnInitializeSequence(UControlRigSequence* Sequence
 	auto* ProjectSettings = GetDefault<UMovieSceneToolsProjectSettings>();
 	UMovieScene* MovieScene = Sequence->GetMovieScene();
 	
-	FFrameNumber StartFrame = (ProjectSettings->DefaultStartTime * MovieScene->GetFrameResolution()).RoundToFrame();
-	int32        Duration   = (ProjectSettings->DefaultDuration  * MovieScene->GetFrameResolution()).RoundToFrame().Value;
+	FFrameNumber StartFrame = (ProjectSettings->DefaultStartTime * MovieScene->GetTickResolution()).RoundToFrame();
+	int32        Duration   = (ProjectSettings->DefaultDuration  * MovieScene->GetTickResolution()).RoundToFrame().Value;
 
 	MovieScene->SetPlaybackRange(StartFrame, Duration);
 }

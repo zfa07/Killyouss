@@ -9,6 +9,7 @@
 #include "Channels/MovieSceneChannelTraits.h"
 #include "SequencerChannelTraits.h"
 #include "Channels/MovieSceneChannelHandle.h"
+#include "MovieSceneTimeHelpers.h"
 
 
 template<typename ChannelType, typename ValueType>
@@ -71,12 +72,13 @@ struct TSequencerKeyEditor
 
 		ChannelType* Channel = ChannelHandle.Get();
 		ISequencer* Sequencer = WeakSequencer.Pin().Get();
+		UMovieSceneSection* OwningSection = WeakSection.Get();
 
 		ValueType Result{};
 
-		if (Channel && Sequencer)
+		if (Channel && Sequencer && OwningSection)
 		{
-			const FFrameTime CurrentTime = Sequencer->GetLocalTime().Time;
+			const FFrameTime CurrentTime = MovieScene::ClampToDiscreteRange(Sequencer->GetLocalTime().Time, OwningSection->GetRange());
 			EvaluateChannel(Channel, CurrentTime, Result);
 		}
 
@@ -107,18 +109,18 @@ struct TSequencerKeyEditor
 		const FFrameNumber CurrentTime = Sequencer->GetLocalTime().Time.FloorToFrame();
 		const bool  bAutoSetTrackDefaults = Sequencer->GetAutoSetTrackDefaults();
 
-		auto ChannelInterface = Channel->GetInterface();
-
 		EMovieSceneKeyInterpolation Interpolation = Sequencer->GetKeyInterpolation();
 
-		int32 ExistingIndex = ChannelInterface.FindKey(CurrentTime);
-		if (ExistingIndex != INDEX_NONE)
+		TArray<FKeyHandle> KeysAtCurrentTime;
+		Channel->GetKeys(TRange<FFrameNumber>(CurrentTime), nullptr, &KeysAtCurrentTime);
+
+		if (KeysAtCurrentTime.Num() > 0)
 		{
-			AssignValue(Channel, ExistingIndex, InValue);
+			AssignValue(Channel, KeysAtCurrentTime[0], InValue);
 		}
 		else
 		{
-			const bool bHasAnyKeys = HasAnyKeys(Channel);
+			const bool bHasAnyKeys = Channel->GetNumKeys() != 0;
 
 			if (bHasAnyKeys || bAutoSetTrackDefaults == false)
 			{

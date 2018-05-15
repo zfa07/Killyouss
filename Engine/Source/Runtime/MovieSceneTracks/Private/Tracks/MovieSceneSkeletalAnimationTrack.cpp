@@ -36,7 +36,7 @@ UMovieSceneSection* UMovieSceneSkeletalAnimationTrack::AddNewAnimationOnRow(FFra
 {
 	UMovieSceneSkeletalAnimationSection* NewSection = Cast<UMovieSceneSkeletalAnimationSection>(CreateNewSection());
 	{
-		FFrameTime AnimationLength = AnimSequence->SequenceLength * GetTypedOuter<UMovieScene>()->GetFrameResolution();
+		FFrameTime AnimationLength = AnimSequence->SequenceLength * GetTypedOuter<UMovieScene>()->GetTickResolution();
 		NewSection->InitialPlacementOnRow(AnimationSections, KeyTime, AnimationLength.FrameNumber.Value, RowIndex);
 		NewSection->Params.Animation = AnimSequence;
 	}
@@ -89,7 +89,7 @@ bool UMovieSceneSkeletalAnimationTrack::SupportsMultipleRows() const
 
 UMovieSceneSection* UMovieSceneSkeletalAnimationTrack::CreateNewSection()
 {
-	return NewObject<UMovieSceneSkeletalAnimationSection>(this);
+	return NewObject<UMovieSceneSkeletalAnimationSection>(this, NAME_None, RF_Transactional);
 }
 
 

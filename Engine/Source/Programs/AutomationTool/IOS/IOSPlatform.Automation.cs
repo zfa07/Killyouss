@@ -474,6 +474,10 @@ public class IOSPlatform : Platform
 						{
 							IPPArguments += " -distribution";
 						}
+						if (Params.IsCodeBasedProject)
+						{
+							IPPArguments += (" -codebased");
+						}
 					}
 
 					IPPArguments += (cookonthefly ? " -cookonthefly" : "");
@@ -508,6 +512,10 @@ public class IOSPlatform : Platform
 					IPPArguments.Add(SchemeName);
 					IPPArguments.Add("-schemeconfig");
 					IPPArguments.Add("\"" + SchemeConfiguration + "\"");
+					if (Params.IsCodeBasedProject)
+					{
+						IPPArguments.Add("-codebased");
+					}
 
 					if (TargetConfiguration == UnrealTargetConfiguration.Shipping)
 					{
@@ -1329,8 +1337,15 @@ public class IOSPlatform : Platform
 		}
 		if (Params.IterativeDeploy)
 		{
+			string SrcSanitizedDeltaFileName = SC.GetUFSDeploymentDeltaPath(Params.Devices.Count == 0 ? "" : Params.DeviceNames[0]);
+
+			string NoPathDstSanitizedDeltaFileName = DeploymentContext.UFSDeployDeltaFileName + SC.GetSanitizedDeviceName((Params.Devices.Count == 0 ? "" : Params.DeviceNames[0]));
+			string DstLocatedDeltaFileName = CombinePaths(Params.BaseStageDirectory, PlatformName, NoPathDstSanitizedDeltaFileName);
+
+			InternalUtils.SafeCopyFile(SrcSanitizedDeltaFileName, DstLocatedDeltaFileName, true);
+
 			// push over the changed files
-			RunAndLog(CmdEnv, DeployServer, "Deploy -manifest \"" + CombinePaths(Params.BaseStageDirectory, PlatformName, DeploymentContext.UFSDeployDeltaFileName + (Params.Devices.Count == 0 ? "" : Params.DeviceNames[0])) + "\"" + (Params.Devices.Count == 0 ? "" : " -device " + Params.DeviceNames[0]) + AdditionalCommandline + " -bundle " + BundleIdentifier);
+			RunAndLog(CmdEnv, DeployServer, "Deploy -manifest \"" + DstLocatedDeltaFileName + "\"" + (Params.Devices.Count == 0 ? "" : " -device " + Params.DeviceNames[0]) + AdditionalCommandline + " -bundle " + BundleIdentifier);
 		}
 		Directory.SetCurrentDirectory (CurrentDir);
         PrintRunTime();
